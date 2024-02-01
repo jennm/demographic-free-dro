@@ -183,6 +183,7 @@ def main(args):
     test_csv_logger = CSVBatchLogger(os.path.join(args.log_dir, f"test.csv"),
                                      test_data.n_groups,
                                      mode=mode)
+        
     train(
         model,
         criterion,
