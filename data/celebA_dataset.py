@@ -54,7 +54,7 @@ class CelebADataset(ConfounderDataset):
         self.n_confounders = len(self.confounder_idx)
         confounders = self.attrs_df[:, self.confounder_idx]
         self.confounder_array = np.matmul(
-            confounders.astype(np.int),
+            confounders.astype(int),
             np.power(2, np.arange(len(self.confounder_idx))))
 
         # Map to groups
