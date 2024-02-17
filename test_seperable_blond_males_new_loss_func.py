@@ -113,8 +113,8 @@ class CelebADataset(Dataset):
         x = image
         x = x.to(torch.float)
         if self.test_celeba:
-            return {'image': x, 'label': self.Y_Array[idx], 'class_labels': self.class_labels[idx]}
-        return {'image': x, 'label': self.Y_Array[idx]}
+            return {'image': x, 'label': self.Y_Array[idx], 'class_labels': self.class_labels[idx], 'idx': idx}
+        return {'image': x, 'label': self.Y_Array[idx], 'idx': idx}
 
 def get_transform_celebA():
     orig_w = 178
@@ -174,6 +174,7 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
     inputs = torch.stack([item['image'] for item in batch])
     labels = torch.stack([item['label'] for item in batch])
     class_labels = torch.stack([item['class_labels'] for item in batch])
+    idxs = [item['idx'] for item in batch]
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -190,7 +191,7 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
 
 
     embeddings = torch.cat(tuple([tail_cache[i][layer_num + 1].to(device) for i in list(tail_cache.keys())]), dim=0)
-    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': labels, 'class_label': class_labels}
+    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': labels, 'class_label': class_labels, 'idxs': idxs}
     tail_cache = dict()
     gc.collect()
     torch.cuda.empty_cache()
@@ -230,8 +231,24 @@ def train_test_classifier(args):
     test_dataset = CelebADataset(root='celebA/data', split='test', test_celeba=True)
     datasets = {'train': train_dataset, 'val': val_dataset, 'test': test_dataset}
     data_to_save = {'input_size': [], 'num_classes': [], 'classifiers': []}
+    groups_from_classifiers = dict()
+    group_counts = list()
+    
 
+    dataloaders = create_dataloader(old_model, datasets, shared_dl_args, 3)
+    group_num = 0
+    count = 0
+    for data_type in ['train', 'test', 'val']:
+        for batch in dataloaders[data_type]:
+            idxs = batch['idxs']
+            for idx in idxs:
+                groups_from_classifiers[idx] = [0]
+                count += 1
+    group_counts.append(count)
+    
+    group_num = 1
 
+    
     for i in range(5):
         print(f'Layer {i}')
         dataloaders = create_dataloader(old_model, datasets, shared_dl_args, i)
@@ -305,11 +322,40 @@ def train_test_classifier(args):
 
             torch.cuda.empty_cache()
 
+        count = 0
+        for data_type in ['train', 'test', 'val']:
+            for batch in dataloaders[data_type]:
+                embeddings = batch['embeddings']
+                idxs = batch['idxs']
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                outputs = log_model(embeddings)
+                _, predicted = torch.max(outputs, 1)
+                for i in range(len(idxs)):
+                    idx = idxs[i]
+                    if predicted[i].item() == 1:
+                        groups_from_classifiers[idx].append(group_num)
+                        count += 1
+        group_counts.append(count)
+        group_num += 1
+
+
+
+
+
         data_to_save['input_size'].append(input_size)
         data_to_save['num_classes'].append(num_classes)
         data_to_save['classifiers'].append(log_model.state_dict())
 
+    example_idxs = list(groups_from_classifiers.keys())
+    example_idxs.sort()
+    groups_from_classifiers_list = list()
+    for idx in example_idxs:
+        groups_from_classifiers_list.append(groups_from_classifiers[idx])
+    groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
+
+
     torch.save(data_to_save, "classifiers.pt")
+    torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(group_counts)}, "groups_from_classifiers_info.pt")
 
     return log_model, accuracy
 
