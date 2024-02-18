@@ -3,3 +3,6 @@ results/
 __pycache__/
 .ipynb_checkpoints/
 celebA/
+cub/
+jigsaw/
+multinli/
