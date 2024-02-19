@@ -260,7 +260,8 @@ def train_test_classifier(args):
         input_size = first_batch_embeddings.shape[-1]  # MNIST images are 28x28 pixels
         num_classes = 2  # use a variable
         log_model = LogisticRegressionModel(input_size, num_classes)
-        criterion = nn.CrossEntropyLoss(reduction='none')
+        # device = torch.cuda.current_device()
+        criterion = nn.CrossEntropyLoss(weight=torch.tensor([.01,1], device=torch.cuda.current_device()), reduction='none')
         optimizer = optim.SGD(log_model.parameters(), lr=0.01)
 
         # Training loop
@@ -285,9 +286,11 @@ def train_test_classifier(args):
 
                 # Changing torch type
                 class_labels = class_labels.to(torch.long)#float)
+                # class_labels = torch.reshape(class_labels, outputs.shape)
+                # print(outputs.shape, class_labels.shape)
 
                 # Calculate loss
-                loss = criterion(outputs, class_labels)
+                loss =  criterion(outputs, class_labels)
                 loss_mean = torch.mean(loss)
 
                 # Backward pass and optimization
@@ -297,6 +300,9 @@ def train_test_classifier(args):
 
             # Print training loss after each epoch
             print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss_mean.item():.4f}')
+            gc.collect()
+            torch.cuda.empty_cache()
+
 
         # Evaluation on the test set
         log_model.eval()
@@ -324,12 +330,15 @@ def train_test_classifier(args):
 
         count = 0
         for data_type in ['train', 'test', 'val']:
+            print(group_num, data_type)
             for batch in dataloaders[data_type]:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
                 embeddings = embeddings.view(embeddings.size(0), -1)
                 outputs = log_model(embeddings)
                 _, predicted = torch.max(outputs, 1)
+                # print(predicted)
+                # print(batch['class_label'])
                 for i in range(len(idxs)):
                     idx = idxs[i]
                     if predicted[i].item() == 1:
@@ -337,6 +346,10 @@ def train_test_classifier(args):
                         count += 1
         group_counts.append(count)
         group_num += 1
+        count = 0
+
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 
@@ -358,7 +371,6 @@ def train_test_classifier(args):
     torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(group_counts)}, "groups_from_classifiers_info.pt")
 
     return log_model, accuracy
-
 
 
 

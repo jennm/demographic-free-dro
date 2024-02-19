@@ -11,7 +11,6 @@ from data.dro_classifiers_dataset import DROClassifiersDataset
 from data.dro_dataset import DRODataset
 from data.multinli_dataset import MultiNLIDataset
 from data.jigsaw_dataset import JigsawDataset
-from classifier import LogisticRegressionModel
 
 ########################
 ####### SETTINGS #######
@@ -33,14 +32,6 @@ confounder_settings = {
 }
 
 
-def read_classifiers(args):
-    classifiers = list()
-    models = torch.load(args.classifier_path)
-    for i in range(int(args.num_classifiers)):
-        model = LogisticRegressionModel(models['input_size'][i], models['num_classes'][i])
-        model.load_state_dict(models['classifiers'][i])
-        classifiers.append(model)
-    return classifiers
 
 
 
@@ -67,21 +58,15 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
             metadata_csv_name=args.metadata_csv_name if (args.metadata_csv_name is not None) else "metadata.csv",
             batch_size=args.batch_size
         )
-    if args.classifier_groups:
-        classifiers = read_classifiers(args)
-        model = torch.load(args.model_path) # os.path.join(args.model_path, "last_model.pth"))
-    else:
-        classifiers = list()
         
     if return_full_dataset:
         if args.classifier_groups:
             return DROClassifiersDataset(
                 full_dataset,
                 process_item_fn=None,
-                classifiers=classifiers,
-                model=model,
                 n_classes=full_dataset.n_classes,
                 group_str_fn=full_dataset.group_str,
+                group_info_path=args.group_info_path
             )
         else:
             return DRODataset(
@@ -101,10 +86,9 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
             DROClassifiersDataset(
                 subsets[split],
                 process_item_fn=None,
-                classifiers=classifiers,
-                model=model,
                 n_classes=full_dataset.n_classes,
                 group_str_fn=full_dataset.group_str,
+                group_info_path=args.group_info_path
             ) for split in splits
         ]
     else:

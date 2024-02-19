@@ -306,16 +306,10 @@ if __name__ == "__main__":
     parser.add_argument("--aug_col", default=None)
 
     parser.add_argument("--classifier_groups", default=False)
-    parser.add_argument("--num_classifiers", default=0)
     parser.add_argument(
-        "--classifier_path", 
+        "--group_info_path", 
         default=None,
-        help="path to classifier weights")
-    parser.add_argument(
-        "--model_path",
-        default=None,
-        help="path to model"
-    )
+        help="path to group info")
 
     args = parser.parse_args()
     
