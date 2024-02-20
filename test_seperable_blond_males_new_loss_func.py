@@ -112,9 +112,10 @@ class CelebADataset(Dataset):
             image = self.transform(image)
         x = image
         x = x.to(torch.float)
+        img_idx = int(self.X[idx][0:-4])
         if self.test_celeba:
-            return {'image': x, 'label': self.Y_Array[idx], 'class_labels': self.class_labels[idx], 'idx': idx}
-        return {'image': x, 'label': self.Y_Array[idx], 'idx': idx}
+            return {'image': x, 'label': self.Y_Array[idx], 'class_labels': self.class_labels[idx], 'idx': img_idx}
+        return {'image': x, 'label': self.Y_Array[idx], 'idx': img_idx}
 
 def get_transform_celebA():
     orig_w = 178
@@ -230,21 +231,21 @@ def train_test_classifier(args):
     val_dataset = CelebADataset(root='celebA/data', split='val', test_celeba=True)
     test_dataset = CelebADataset(root='celebA/data', split='test', test_celeba=True)
     datasets = {'train': train_dataset, 'val': val_dataset, 'test': test_dataset}
-    data_to_save = {'input_size': [], 'num_classes': [], 'classifiers': []}
+    # data_to_save = {'input_size': [], 'num_classes': [], 'classifiers': []}
     groups_from_classifiers = dict()
     group_counts = list()
     
 
     dataloaders = create_dataloader(old_model, datasets, shared_dl_args, 3)
-    group_num = 0
+    #group_num = 0
     count = 0
     for data_type in ['train', 'test', 'val']:
         for batch in dataloaders[data_type]:
             idxs = batch['idxs']
             for idx in idxs:
-                groups_from_classifiers[idx] = [0]
-                count += 1
-    group_counts.append(count)
+                groups_from_classifiers[idx] = list() #[0]
+                #count += 1
+    # group_counts.append(count)
     
     group_num = 1
 
@@ -273,7 +274,7 @@ def train_test_classifier(args):
                 device = torch.cuda.current_device()
                 log_model.to(device)
                 embeddings = batch['embeddings']
-                loss = batch['loss']
+                # loss = batch['loss']
                 class_labels = batch['class_label']
 
                 # Flatten the images
@@ -326,48 +327,54 @@ def train_test_classifier(args):
             accuracy = correct / total
             print(f'Test Accuracy: {accuracy:.4f}')
 
+            gc.collect()
             torch.cuda.empty_cache()
 
-        count = 0
-        for data_type in ['train', 'test', 'val']:
-            print(group_num, data_type)
-            for batch in dataloaders[data_type]:
-                embeddings = batch['embeddings']
-                idxs = batch['idxs']
-                embeddings = embeddings.view(embeddings.size(0), -1)
-                outputs = log_model(embeddings)
-                _, predicted = torch.max(outputs, 1)
-                # print(predicted)
-                # print(batch['class_label'])
-                for i in range(len(idxs)):
-                    idx = idxs[i]
-                    if predicted[i].item() == 1:
-                        groups_from_classifiers[idx].append(group_num)
-                        count += 1
-        group_counts.append(count)
-        group_num += 1
-        count = 0
+            count = 0
+            for data_type in ['train', 'test', 'val']:
+                print(group_num, data_type)
+                for batch in dataloaders[data_type]:
+                    embeddings = batch['embeddings']
+                    idxs = batch['idxs']
+                    embeddings = embeddings.view(embeddings.size(0), -1)
+                    outputs = log_model(embeddings)
+                    _, predicted = torch.max(outputs, 1)
+                    # print(predicted)
+                    # print(batch['class_label'])
+                    for i in range(len(idxs)):
+                        idx = idxs[i]
+                        if predicted[i].item() == 1:
+                            groups_from_classifiers[idx].append(group_num)
+                            count += 1
+                        else:
+                            groups_from_classifiers[idx].append(-1)
+                gc.collect()
+                torch.cuda.empty_cache()
+            group_counts.append(count)
+            group_num += 1
+            count = 0
 
-        gc.collect()
-        torch.cuda.empty_cache()
+            gc.collect()
+            torch.cuda.empty_cache()
 
 
 
 
 
-        data_to_save['input_size'].append(input_size)
-        data_to_save['num_classes'].append(num_classes)
-        data_to_save['classifiers'].append(log_model.state_dict())
+        # data_to_save['input_size'].append(input_size)
+        # data_to_save['num_classes'].append(num_classes)
+        # data_to_save['classifiers'].append(log_model.state_dict())
 
     example_idxs = list(groups_from_classifiers.keys())
     example_idxs.sort()
+    # print(example_idxs)
+    # print(groups_from_classifiers)
     groups_from_classifiers_list = list()
     for idx in example_idxs:
         groups_from_classifiers_list.append(groups_from_classifiers[idx])
     groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
 
-
-    torch.save(data_to_save, "classifiers.pt")
+    # torch.save(data_to_save, "classifiers.pt")
     torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(group_counts)}, "groups_from_classifiers_info.pt")
 
     return log_model, accuracy
