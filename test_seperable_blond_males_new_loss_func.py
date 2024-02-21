@@ -155,14 +155,11 @@ def get_hooks(model):
 def setup(args):
     dataset = CelebADataset(root='celebA/data', split='train', test_celeba=True)
     num_classes = int(dataset.get_num_classes())
-    # model = torchvision.models.resnet50(pretrained=not args.train_from_scratch)
-    # d = model.fc.in_features
-    # model.fc = nn.Linear(d, num_classes)
     model = get_model(
         model=args.model,
         pretrained=not args.train_from_scratch,
         resume=True,
-        n_classes=num_classes, #train_data.n_classes,
+        n_classes=num_classes,
         dataset=args.dataset,
         log_dir=args.log_dir,
     )
@@ -183,7 +180,6 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
         # Forward pass through the 5th to last layer
         inputs = inputs.to(device)
         outputs = pretrained_model(inputs)
-        #device = outputs.get_device()
         pred = torch.argmax(outputs, 1)
         # loss per batch for now
         pred = pred.to(torch.float)
@@ -237,17 +233,14 @@ def train_test_classifier(args):
     
 
     dataloaders = create_dataloader(old_model, datasets, shared_dl_args, 3)
-    #group_num = 0
-    count = 0
     for data_type in ['train', 'test', 'val']:
         for batch in dataloaders[data_type]:
             idxs = batch['idxs']
             for idx in idxs:
-                groups_from_classifiers[idx] = list() #[0]
-                #count += 1
-    # group_counts.append(count)
+                groups_from_classifiers[idx] = list()
     
     group_num = 1
+    count = 0
 
     
     for i in range(5):
@@ -261,7 +254,6 @@ def train_test_classifier(args):
         input_size = first_batch_embeddings.shape[-1]  # MNIST images are 28x28 pixels
         num_classes = 2  # use a variable
         log_model = LogisticRegressionModel(input_size, num_classes)
-        # device = torch.cuda.current_device()
         criterion = nn.CrossEntropyLoss(weight=torch.tensor([.01,1], device=torch.cuda.current_device()), reduction='none')
         optimizer = optim.SGD(log_model.parameters(), lr=0.01)
 
@@ -286,9 +278,7 @@ def train_test_classifier(args):
                 outputs = log_model(embeddings)
 
                 # Changing torch type
-                class_labels = class_labels.to(torch.long)#float)
-                # class_labels = torch.reshape(class_labels, outputs.shape)
-                # print(outputs.shape, class_labels.shape)
+                class_labels = class_labels.to(torch.long)
 
                 # Calculate loss
                 loss =  criterion(outputs, class_labels)
@@ -339,8 +329,6 @@ def train_test_classifier(args):
                     embeddings = embeddings.view(embeddings.size(0), -1)
                     outputs = log_model(embeddings)
                     _, predicted = torch.max(outputs, 1)
-                    # print(predicted)
-                    # print(batch['class_label'])
                     for i in range(len(idxs)):
                         idx = idxs[i]
                         if predicted[i].item() == 1:
@@ -367,8 +355,6 @@ def train_test_classifier(args):
 
     example_idxs = list(groups_from_classifiers.keys())
     example_idxs.sort()
-    # print(example_idxs)
-    # print(groups_from_classifiers)
     groups_from_classifiers_list = list()
     for idx in example_idxs:
         groups_from_classifiers_list.append(groups_from_classifiers[idx])

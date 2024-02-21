@@ -61,7 +61,7 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
     def get_group_array(self):
         group_array = []
         for dataset in self.datasets:
-            group_array += list(np.squeeze(dataset.get_group_array()))
+            group_array += list(np.squeeze(dataset.get_group_array().tolist()))
         return group_array
 
     def get_label_array(self):
@@ -134,6 +134,8 @@ def get_fold(
 
     if fold is not None:
         train_data_subset, val_data_subset = all_folds[sweep_ind][fold_ind]
+        
+        # TODO: might need to accound for classifiers here, but i think we're good :)
         # Wrap in DRODataset Objects
         train_data = dro_dataset.DRODataset(
             train_data_subset,
