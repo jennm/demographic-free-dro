@@ -17,12 +17,16 @@ class DRODataset(Dataset):
         y_array = []
 
         group_array = self.get_group_array()
+
         y_array = self.get_label_array()
 
+        # print(group_array)
+        # print(group_array.shape)
         self._group_array = torch.LongTensor(group_array)
+        # print(self._group_array.shape)
         self._y_array = torch.LongTensor(y_array)
         self._group_counts = ((torch.arange(
-            self.n_groups).unsqueeze(1) == self._group_array).sum(1).float())
+            self.n_groups).unsqueeze(0) == self._group_array).sum(1).float())
 
         self._y_counts = (torch.arange(
             self.n_classes).unsqueeze(1) == self._y_array).sum(1).float()
