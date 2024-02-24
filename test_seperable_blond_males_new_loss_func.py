@@ -233,13 +233,16 @@ def train_test_classifier(args):
     
 
     dataloaders = create_dataloader(old_model, datasets, shared_dl_args, 3)
+    count = 0
     for data_type in ['train', 'test', 'val']:
         for batch in dataloaders[data_type]:
             idxs = batch['idxs']
             for idx in idxs:
-                groups_from_classifiers[idx] = list()
+                groups_from_classifiers[idx] = [0]
+                count += 1
     
     group_num = 1
+    group_counts.append(count)
     count = 0
 
     
