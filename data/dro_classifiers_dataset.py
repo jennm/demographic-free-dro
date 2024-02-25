@@ -22,6 +22,9 @@ class DROClassifiersDataset(Dataset):
         group_info = torch.load(group_info_path)
         self._group_array = group_info['group_array']
         self._group_counts = group_info['group_counts']
+
+        self.dataset.update_group_array(self._group_array)
+        
         self.n_groups = self._group_counts.shape[0] - 1
         print('n_groups', self.n_groups)
 

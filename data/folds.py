@@ -22,6 +22,10 @@ class Subset(torch.utils.data.Dataset):
 
         self.group_array = self.get_group_array(re_evaluate=True)
         self.label_array = self.get_label_array(re_evaluate=True)
+
+
+    def update_group_array(self, group_array):
+        self.dataset.update_group_array(group_array)
         
 
     def __getitem__(self, idx):

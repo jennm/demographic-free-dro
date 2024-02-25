@@ -53,8 +53,11 @@ class LossComputer:
             assert alpha, "alpha must be specified"
 
         # quantities maintained throughout training
+            # initially uniform distribution over all groups
         self.adv_probs = torch.ones(self.n_groups).cuda() / self.n_groups
+            # zero init exponential avg loss per group
         self.exp_avg_loss = torch.zeros(self.n_groups).cuda()
+            # more efficient rep of zero init exponential avg loss per group
         self.exp_avg_initialized = torch.zeros(self.n_groups).byte().cuda()
 
         self.reset_stats()
@@ -62,6 +65,7 @@ class LossComputer:
     def loss(self, yhat, y, group_idx=None, is_training=False):
         # compute per-sample and per-group losses
         per_sample_losses = self.criterion(yhat, y)
+
         group_loss, group_count = self.compute_group_avg(
             per_sample_losses, group_idx)
         group_acc, group_count = self.compute_group_avg(
@@ -94,16 +98,33 @@ class LossComputer:
         return actual_loss
 
     def compute_robust_loss(self, group_loss, group_count):
+        """computes adjusted loss, gives back weighted sum of group losses
+
+        Args:
+            group_loss (_type_): losses corresponding to different groups
+            group_count (_type_): count of each group
+
+        Returns:
+            _type_: robust loss and scaled adversarial probabilities
+        """
+        # add some adjustment dependent on group size to each group loss
         adjusted_loss = group_loss
         if torch.all(self.adj > 0):
             adjusted_loss += self.adj / torch.sqrt(self.group_counts)
+
+        # normalizes adjusted loss
         if self.normalize_loss:
             adjusted_loss = adjusted_loss / (adjusted_loss.sum())
+        
+        # softmax the adversarial probabilities with the adjusted losses?
         self.adv_probs = self.adv_probs * torch.exp(
-            self.step_size * adjusted_loss.data)
-        self.adv_probs = self.adv_probs / (self.adv_probs.sum())
+            self.step_size * adjusted_loss.data) # spreads out values
+        self.adv_probs = self.adv_probs / (self.adv_probs.sum()) # normalizes values
 
+        # dot product of group loss and adv_probs
+        # yields weigghted sum of losses
         robust_loss = group_loss @ self.adv_probs
+
         return robust_loss, self.adv_probs
 
     def compute_robust_loss_btl(self, group_loss, group_count):
@@ -132,10 +153,12 @@ class LossComputer:
 
     def compute_group_avg(self, losses, group_idx):
         # compute observed counts and mean loss for each group
-        group_map = (group_idx == torch.arange(
-            self.n_groups).unsqueeze(1).long().cuda()).float()
+        # group_map = (group_idx == torch.arange(
+        #     self.n_groups).unsqueeze(1).long().cuda()).float()
 
-        group_count = group_map.sum(1)
+        group_map = (group_idx.unsqueeze(2) == torch.tensor([1,2,3,4,5])).any(dim=1).float()
+        group_count = group_map.sum(0)
+        
         group_denom = group_count + (group_count == 0).float()  # avoid nans
         group_loss = (group_map @ losses.view(-1)) / group_denom
         return group_loss, group_count
