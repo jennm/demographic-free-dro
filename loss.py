@@ -35,6 +35,7 @@ class LossComputer:
         self.n_groups = dataset.n_groups
 
         self.group_counts = dataset.group_counts().cuda()
+        # print('group_counts', self.group_counts)
         self.group_frac = self.group_counts / self.group_counts.sum()
         self.group_str = dataset.group_str
 

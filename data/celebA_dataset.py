@@ -72,6 +72,8 @@ class CelebADataset(ConfounderDataset):
         
         # group_info = torch.load('groups_from_classifiers_info.pt')
         # self.group_array = group_info['group_array']       
+        # print(self.group_array.shape)
+        # print(self.group_array)
 
         # Read in train/val/test splits
         self.split_df = pd.read_csv(
