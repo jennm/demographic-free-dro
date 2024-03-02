@@ -7,7 +7,7 @@ from torch.utils.data.sampler import WeightedRandomSampler
 
 class DRODataset(Dataset):
     def __init__(self, dataset, process_item_fn, n_groups, n_classes,
-                 group_str_fn):
+                 group_str_fn, new_up_weight_array=None):
         self.dataset = dataset
         self.process_item = process_item_fn
         self.n_groups = n_groups
@@ -23,6 +23,14 @@ class DRODataset(Dataset):
         self._group_array = torch.LongTensor(group_array)
 
         self._y_array = torch.LongTensor(y_array)
+        
+        if new_up_weight_array is None:
+            try: 
+                self.up_weight_array = self.dataset.get_up_weight_array()
+            except:
+                self.up_weight_array = torch.ones(len(self._y_array))
+        else:
+            self.up_weight_array = new_up_weight_array
 
         self._group_counts = torch.unique(self._group_array, sorted=True, return_counts=True)[1]
         self._group_counts = torch.cat((self._group_counts[1:], self._group_counts[0].unsqueeze(0)))
@@ -47,6 +55,9 @@ class DRODataset(Dataset):
             return self.dataset.get_label_array()
         else:
             raise NotImplementedError
+
+    def get_up_weight_array(self):
+        return self.up_weight_array
 
     def __len__(self):
         return len(self.dataset)

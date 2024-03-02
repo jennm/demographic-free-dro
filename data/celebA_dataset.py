@@ -47,6 +47,7 @@ class CelebADataset(ConfounderDataset):
         # Get the y values
         target_idx = self.attr_idx(self.target_name) # get the id for "Blonde"
         self.y_array = self.attrs_df[:, target_idx] # gets the target values for all data points (bool arr of Blonde or Not Blonde)
+        self.up_weight_array = torch.ones(len(self.y_array))
         self.n_classes = 2 # maybe num possible values for target?
 
         # Map the confounder attributes to a number 0,...,2^|confounder_idx|-1

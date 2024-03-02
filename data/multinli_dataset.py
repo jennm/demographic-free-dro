@@ -63,6 +63,7 @@ class MultiNLIDataset(ConfounderDataset):
         # Get the y values
         # gold_label is hardcoded
         self.y_array = self.metadata_df["gold_label"].values
+        self.up_weight_array = torch.ones(len(self.y_array))
         self.n_classes = len(np.unique(self.y_array))
 
         self.confounder_array = self.metadata_df[confounder_names[0]].values
@@ -111,7 +112,8 @@ class MultiNLIDataset(ConfounderDataset):
         y = self.y_array[idx]
         g = self.group_array[idx]
         x = self.x_array[idx, ...]
-        return x, y, g, idx
+        up_weight = self.up_weight_array[idx]
+        return x, y, g, up_weight, idx
 
     def group_str(self, group_idx):
         y = group_idx // (self.n_groups / self.n_classes)

@@ -63,9 +63,9 @@ class LossComputer:
 
         self.reset_stats()
 
-    def loss(self, yhat, y, group_idx=None, is_training=False):
+    def loss(self, yhat, y, group_idx=None, is_training=False, lambda_weights=None):
         # compute per-sample and per-group losses
-        per_sample_losses = self.criterion(yhat, y)
+        per_sample_losses = self.criterion(yhat * lambda_weights.unsqueeze(1), y)
 
         group_loss, group_count = self.compute_group_avg(
             per_sample_losses, group_idx)

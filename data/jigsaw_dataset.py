@@ -64,6 +64,7 @@ class JigsawDataset(ConfounderDataset):
 
         # Get the y values
         self.y_array = (self.metadata_df[self.target_name].values >= 0.5).astype("long")
+        self.up_weight_array = torch.ones(len(self.y_array))
         self.n_classes = len(np.unique(self.y_array))
 
         if self.confounder_names[0] == "only_label":
@@ -109,6 +110,7 @@ class JigsawDataset(ConfounderDataset):
     def __getitem__(self, idx):
         y = self.y_array[idx]
         g = self.group_array[idx]
+        up_weight = self.up_weight_array[idx]
 
         text = self.text_array[idx]
         tokens = self.tokenizer(
@@ -124,7 +126,7 @@ class JigsawDataset(ConfounderDataset):
         )
         x = torch.squeeze(x, dim=0)  # First shape dim is always 1
 
-        return x, y, g, idx
+        return x, y, g, up_weight, idx
 
     def group_str(self, group_idx):
         if self.n_groups == self.n_classes:

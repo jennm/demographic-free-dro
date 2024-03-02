@@ -93,16 +93,29 @@ def main(args):
             up_weight_factor = args.up_weight
 
         print(f"Up-weight factor: {up_weight_factor}")
-        upsampled_points = Subset(train_data,
-                                  list(aug_indices) * up_weight_factor)
-        # Convert to DRODataset
-        train_data = dro_dataset.DRODataset(
-            ConcatDataset([train_data, upsampled_points]),
-            process_item_fn=None,
-            n_groups=train_data.n_groups,
-            n_classes=train_data.n_classes,
-            group_str_fn=train_data.group_str,
-        )
+        if args.lambda_loss:
+            up_weight_array = [1 / up_weight_factor] * len(train_col)
+            for idx in aug_indices:
+                up_weight_array[idx] = 1
+            train_data = dro_dataset.DRODataset(
+                train_data,
+                process_item_fn=None,
+                n_groups=train_data.n_groups,
+                n_classes=train_data.n_classes,
+                group_str_fn=train_data.group_str,
+                new_up_weight_array=up_weight_array
+            )
+        else:
+            upsampled_points = Subset(train_data,
+                                    list(aug_indices) * up_weight_factor)
+            # Convert to DRODataset
+            train_data = dro_dataset.DRODataset(
+                ConcatDataset([train_data, upsampled_points]),
+                process_item_fn=None,
+                n_groups=train_data.n_groups,
+                n_classes=train_data.n_classes,
+                group_str_fn=train_data.group_str,
+            )
     elif args.aug_col is not None:
         print("\n"*2 + "WARNING: aug_col is not being used." + "\n"*2)
 
@@ -308,6 +321,8 @@ if __name__ == "__main__":
         "--group_info_path", 
         default=None,
         help="path to group info")
+
+    parser.add_argument("--lambda_loss", action="store_true", default=False)
 
     args = parser.parse_args()
     

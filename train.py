@@ -34,6 +34,7 @@ def run_epoch(
     csv_name=None,
     wandb_group=None,
     wandb=None,
+    lambda_weights=None
 ):
     """
     scheduler is only used inside this function if model is bert.
@@ -61,7 +62,8 @@ def run_epoch(
             x = batch[0]
             y = batch[1]
             g = batch[2]
-            data_idx = batch[3]
+            up_weight_array = batch[3]
+            data_idx = batch[4]
             
             if args.model.startswith("bert"):
                 input_ids = x[:, :, 0]
@@ -106,7 +108,7 @@ def run_epoch(
             for class_ind in range(probs.shape[1]):
                 output_df[f"pred_prob_{run_name}_{class_ind}"] = probs[:, class_ind]
 
-            loss_main = loss_computer.loss(outputs, y, g, is_training)
+            loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
 
             if is_training:
                 if (args.model.startswith("bert") and args.use_bert_params): 
