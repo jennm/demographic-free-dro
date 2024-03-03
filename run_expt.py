@@ -21,6 +21,32 @@ from utils import set_seed, Logger, CSVBatchLogger, log_args, get_model, hinge_l
 from train import train
 from data.folds import Subset, ConcatDataset
 
+def get_subset(
+    dataset,
+    seed=0,
+    fraction=0.2
+):
+    random = np.random.RandomState(seed)
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    sz = int(math.ceil(len(indices) * fraction))
+    indices = indices[:sz]
+    split = Subset(dataset, indices)
+        
+    # Wrap in DRODataset Objects
+    data = dro_dataset.DRODataset(
+        split,
+        process_item_fn=None,
+        n_groups=dataset.n_groups,
+        n_classes=dataset.n_classes,
+        group_str_fn=dataset.group_str,
+    )
+
+    print('NEW SIZE', len(indices))
+
+    return data
+
 
 def main(args):
     if args.wandb:
@@ -62,6 +88,10 @@ def main(args):
     elif args.shift_type == "label_shift_step":
         raise NotImplementedError
         train_data, val_data = prepare_data(args, train=True)
+
+    if args.shrink:
+        print('SHRINKING')
+        train_data, val_data, test_data = get_subset(train_data), get_subset(val_data), get_subset(test_data)
 
     #########################################################################
     ###################### Prepare data for our method ######################
@@ -225,7 +255,9 @@ def main(args):
                                     mode=mode)
     test_csv_logger = CSVBatchLogger(os.path.join(args.log_dir, f"test.csv"),
                                      test_data.n_groups,
-                                     mode=mode)
+                                    mode=mode)
+
+    s = time.time()
     train(
         model,
         criterion,
@@ -239,6 +271,8 @@ def main(args):
         csv_name=args.fold,
         wandb=wandb if args.wandb else None,
     )
+    e = time.time()
+    print('TOTAL TRAINING TIME', e - s)
 
     train_csv_logger.close()
     val_csv_logger.close()
