@@ -30,7 +30,7 @@ class DRODataset(Dataset):
             except:
                 self.up_weight_array = torch.ones(len(self._y_array))
         else:
-            self.up_weight_array = new_up_weight_array
+            self.update_up_weight_array(new_up_weight_array)
 
         self._group_counts = torch.unique(self._group_array, sorted=True, return_counts=True)[1]
         self._group_counts = torch.cat((self._group_counts[1:], self._group_counts[0].unsqueeze(0)))
@@ -43,6 +43,9 @@ class DRODataset(Dataset):
             return self.dataset[idx]
         else:
             return self.process_item(self.dataset[idx])
+
+    def update_up_weight_array(self, new_up_weight_array):
+        self.dataset.update_up_weight_array(new_up_weight_array)
 
     def get_group_array(self):
         if self.process_item is None:

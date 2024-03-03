@@ -107,6 +107,10 @@ class JigsawDataset(ConfounderDataset):
     def get_label_array(self):
         return self.y_array
 
+    def update_up_weight_array(self, new_up_weight_array):
+        self.up_weight_array = new_up_weight_array
+
+
     def __getitem__(self, idx):
         y = self.y_array[idx]
         g = self.group_array[idx]

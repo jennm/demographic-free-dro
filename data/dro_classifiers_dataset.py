@@ -45,6 +45,9 @@ class DROClassifiersDataset(Dataset):
         self._y_counts = (torch.arange(
             self.n_classes).unsqueeze(1) == self._y_array).sum(1).float()
                 
+    def update_up_weight_array(self, new_up_weight_array):
+        self.dataset.update_up_weight_array(new_up_weight_array)
+    
     def __getitem__(self, idx):
         if self.process_item is None:
             return(self.dataset[idx])

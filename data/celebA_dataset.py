@@ -116,6 +116,9 @@ class CelebADataset(ConfounderDataset):
     def update_group_array(self, group_array):
         self.group_array = group_array
 
+    def update_up_weight_array(self, new_up_weight_array):
+        self.up_weight_array = new_up_weight_array
+
 def get_transform_celebA(model_type, train, augment_data):
     orig_w = 178
     orig_h = 218

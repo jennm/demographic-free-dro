@@ -27,6 +27,8 @@ class Subset(torch.utils.data.Dataset):
     def update_group_array(self, group_array):
         self.dataset.update_group_array(group_array)
         
+    def update_up_weight_array(self, new_up_weight_array):
+        self.up_weight_array = self.dataset.update_up_weight_array(new_up_weight_array)
 
     def __getitem__(self, idx):
         return self.dataset[self.indices[idx]]

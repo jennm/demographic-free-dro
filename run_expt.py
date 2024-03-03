@@ -94,9 +94,11 @@ def main(args):
 
         print(f"Up-weight factor: {up_weight_factor}")
         if args.lambda_loss:
-            up_weight_array = [1 / up_weight_factor] * len(train_col)
+            up_weight_array = [1] * len(train_col)
             for idx in aug_indices:
-                up_weight_array[idx] = 1
+                up_weight_array[idx] = up_weight_factor
+            
+            # print("up_weight_array:", up_weight_array)
             train_data = dro_dataset.DRODataset(
                 train_data,
                 process_item_fn=None,
