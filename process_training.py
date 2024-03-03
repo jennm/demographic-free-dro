@@ -39,7 +39,10 @@ def main(args):
     if dataset == "jigsaw" or dataset == "MultiNLI":
         original_train_df = original_train_df.drop(['Unnamed: 0'], axis=1)
 
-    merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"))
+    if args.shrink:
+        merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"), how="right")
+    else: merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"))
+
     if dataset == "CUB":
         merged_csv["spurious"] = merged_csv['y'] != merged_csv["place"]
     elif dataset == "CelebA":
@@ -109,7 +112,7 @@ def main(args):
     root = f"{exp_name}/train_downstream_{folder_name}/final_epoch{final_epoch}"
     
     sbatch_command = (
-            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" + (f" --batch_size {args.batch_size}" if args.batch_size else "")
+            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" + (f" --batch_size {args.batch_size}" if args.batch_size else "") + (f" --shrink" if args.shrink else "")
         )
     print(sbatch_command)
     if args.deploy:
@@ -135,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, required=True)
     parser.add_argument("--folder_name", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=None)
+    parser.add_argument("--shrink", action="store_true", default=False)
 
     args = parser.parse_args()
     main(args)

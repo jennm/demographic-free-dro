@@ -146,6 +146,7 @@ def generate_downstream_commands(args):
                     + (f" --loss_type {loss_type}")
                     + (" --reweight_groups" if loss_type == "group_dro" else "")
                     + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
+                    + (f" --shrink" if args.shrink else "")
                 )
 
                 file.write(
@@ -157,6 +158,7 @@ def generate_downstream_commands(args):
                     + (f" --loss_type {loss_type}")
                     + (" --reweight_groups" if loss_type == "group_dro" else "")
                     + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
+                    + (f" --shrink" if args.shrink else "")
                 )
                 
                 file.write("\n")
@@ -187,7 +189,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--no_wandb",
         action="store_true",
-        default=False,
+        default=True,
         help="do not add wandb logging",
     )
     parser.add_argument("--lr", type=float, default=0.001)
@@ -224,6 +226,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="last epoch in training",
+    )
+
+    parser.add_argument(
+        "--shrink",
+        action="store_true",
+        default=False
     )
 
     args = parser.parse_args()
