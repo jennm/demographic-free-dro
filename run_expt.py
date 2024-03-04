@@ -85,6 +85,8 @@ def main(args):
         else:
             train_col = metadata_df[metadata_df["split"] == 0]
         aug_indices = np.where(train_col[args.aug_col] == 1)[0]
+        print('train_col', train_col)
+        print('total', len(metadata_df) + len(val_data) + len(test_data))
         print("len", len(train_col), len(aug_indices))
         if args.up_weight == -1:
             up_weight_factor = int(
@@ -94,7 +96,7 @@ def main(args):
 
         print(f"Up-weight factor: {up_weight_factor}")
         if args.lambda_loss:
-            up_weight_array = [1] * len(train_col)
+            up_weight_array = [1] * (len(train_col) + len(val_data) + len(test_data))
             for idx in aug_indices:
                 up_weight_array[idx] = up_weight_factor
             
