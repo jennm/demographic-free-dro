@@ -66,9 +66,7 @@ class LossComputer:
     def loss(self, yhat, y, group_idx=None, is_training=False, lambda_weights=None):
         # compute per-sample and per-group losses
         per_sample_losses = self.criterion(yhat, y)
-        # print(per_sample_losses.shape)
-        # print(lambda_weights)
-        per_sample_losses *= lambda_weights#.unsqueeze(1)
+        per_sample_losses *= lambda_weights
 
         group_loss, group_count = self.compute_group_avg(
             per_sample_losses, group_idx)
@@ -158,7 +156,7 @@ class LossComputer:
     def compute_group_avg(self, losses, group_idx):
         # compute observed counts and mean loss for each group
         if len(group_idx.shape) > 1:
-            group_map = (group_idx.unsqueeze(2) == torch.arange(1, self.n_groups+1).long().cuda()).any(dim=1).float()
+            group_map = (group_idx.unsqueeze(2) == torch.arange(0, self.n_groups).long().cuda()).any(dim=1).float()
             group_count = group_map.sum(0)
             group_map = torch.swapdims(group_map, 0, 1)
         else:

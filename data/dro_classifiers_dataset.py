@@ -21,26 +21,11 @@ class DROClassifiersDataset(Dataset):
 
         group_info = torch.load(group_info_path)
         self._group_array = group_info['group_array']
-        # self._group_counts = group_info['group_counts']
 
         self.dataset.update_group_array(self._group_array)
         
-        # self.n_groups = self._group_counts.shape[0] - 1
-        # print('n_groups', self.n_groups)
-        # print(self._group_array.shape)
-        # self.n_classes = self._group_array.shape[1]
-        # self._group_counts = group_info['group_counts']
         self.n_groups = self._group_array.shape[1]
-        # print(self.n_groups)
-        # (x.unsqueeze(1) == y.unsqueeze(1)).sum(0).float().sum(1)
-        # print(torch.arange(self.n_groups).unsqueeze(0)) 
-        # print(self._group_array.unsqueeze(0))
-        self._group_counts = ((torch.arange(1,self.n_groups + 1).unsqueeze(1) == self._group_array.unsqueeze(1)).sum(0).sum(1).float())
-        # self._group_counts = ((torch.arange(
-            # self.n_groups).unsqueeze(0) == self._group_array.unsqueeze(0)))#.sum(1).float())
-        # print(self._group_counts)
-        # self.n_groups = self._group_counts.shape[1]
-        # print('n_groups', self.n_groups)
+        self._group_counts = ((torch.arange(0,self.n_groups).unsqueeze(1) == self._group_array.unsqueeze(1)).sum(0).sum(1).float())
 
         self._y_counts = (torch.arange(
             self.n_classes).unsqueeze(1) == self._y_array).sum(1).float()
