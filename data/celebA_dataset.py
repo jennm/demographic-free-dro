@@ -70,11 +70,6 @@ class CelebADataset(ConfounderDataset):
         # for each target value, multiply by half the number of groups; add the "compressed" confounders value
         self.group_array = (self.y_array * (self.n_groups / 2) +
                             self.confounder_array).astype("int")
-        
-        # group_info = torch.load('groups_from_classifiers_info.pt')
-        # self.group_array = group_info['group_array']       
-        # print(self.group_array.shape)
-        # print(self.group_array)
 
         # Read in train/val/test splits
         self.split_df = pd.read_csv(

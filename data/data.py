@@ -14,8 +14,8 @@ dataset_attributes = {
     "CUB": {
         "root_dir": "cub"
     },
-    "CIFAR10": {
-        "root_dir": "CIFAR10/data"
+    "ColoredMNIST": {
+        "root_dir": "coloredMNIST"
     },
     "MultiNLI": {
         "root_dir": "multinli"

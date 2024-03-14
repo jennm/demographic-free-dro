@@ -205,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",
                         type=str,
                         default="CUB",
-                        help="CUB, CelebA, or MultiNLI")
+                        help="CUB, CelebA, ColoredMNIST, or MultiNLI")
     # Default arguments (don't change)
     parser.add_argument("--results_dir", type=str, default="results/")
     parser.add_argument("--exp_substring", type=str, default="")
@@ -228,6 +228,8 @@ if __name__ == "__main__":
         if args.exp_substring in folder
     ]
 
+    print(runs)
+
     # Print robust val accuracies from downstream runs
     for run in runs:
         try:
@@ -235,6 +237,8 @@ if __name__ == "__main__":
             
             training_output_dir = os.path.join(args.training_output_dir,
                                             sub_exp_name, "model_outputs")
+            
+            print(training_output_dir)
             train_path = os.path.join(training_output_dir, "train.csv")
             val_path = os.path.join(training_output_dir, "val.csv")
             test_path = os.path.join(training_output_dir, "test.csv")

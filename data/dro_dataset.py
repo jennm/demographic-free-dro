@@ -33,7 +33,7 @@ class DRODataset(Dataset):
             self.update_up_weight_array(new_up_weight_array)
 
         self._group_counts = torch.unique(self._group_array, sorted=True, return_counts=True)[1]
-        self._group_counts = torch.cat((self._group_counts[1:], self._group_counts[0].unsqueeze(0)))
+        # self._group_counts = torch.cat((self._group_counts[1:], self._group_counts[0].unsqueeze(0)))
 
         self._y_counts = (torch.arange(
             self.n_classes).unsqueeze(1) == self._y_array).sum(1).float()

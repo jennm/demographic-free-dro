@@ -18,6 +18,7 @@ dataset_dir = {
     "CelebA": "celebA/data/",
     "MultiNLI": "multinli/data/",
     "jigsaw": "jigsaw/data/",
+    "ColoredMNIST": "coloredMNIST/data/"
 }
 
 def get_spurious_col_csv(args):
@@ -45,7 +46,10 @@ def get_spurious_col_csv(args):
         train_data["spurious"] = (
             (train_data["Blond_Hair"] == 1) & (train_data["Male"] == 1)
         ) | ((train_data["Blond_Hair"] == -1) & (train_data["Male"] == -1))
-
+    elif args.dataset == "ColoredMNIST":
+        train_data["spurious"] = (
+            (train_data["target"] == 1) & (train_data["confounder"] == 1)
+        ) | ((train_data['target'] == 0) & (train_data["confounder"] == 0))
     elif args.dataset == "MultiNLI":
         train_data["spurious"] = (
             (train_data["gold_label"] == 0)
@@ -258,8 +262,6 @@ if __name__ == "__main__":
         args.root_dir = "./"
         args.target = "gold_label_random"
         args.confounder_name = "sentence2_has_negation"
-#         args.lr = 0.00002
-#         args.weight_decay = 0
         args.batch_size = 32
         args.model = "bert"
         args.memory = 30 if not args.memory else args.memory
@@ -277,6 +279,14 @@ if __name__ == "__main__":
         args.memory = 60 if not args.memory else args.memory
         args.final_epoch = 0
         args.metadata_csv_name = "all_data_with_identities.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    elif args.dataset == "ColoredMNIST":
+        args.root_dir = "./"
+        args.target = "target"
+        args.confounder_name = "confounder"
+        args.n_epochs = 5
+        args.model = "cnn"
+        args.memory = 30 if not args.memory else args.memory
+        args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     else:
         assert False, f"{args.dataset} is not a known dataset."
 
