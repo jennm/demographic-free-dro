@@ -4,6 +4,7 @@ import types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 
 import numpy as np
 from tqdm import tqdm
@@ -22,6 +23,7 @@ def run_epoch(
     epoch,
     model,
     optimizer,
+    scaler,
     loader,
     loss_computer,
     logger,
@@ -33,8 +35,7 @@ def run_epoch(
     scheduler=None,
     csv_name=None,
     wandb_group=None,
-    wandb=None,
-    lambda_weights=None
+    wandb=None
 ):
     """
     scheduler is only used inside this function if model is bert.
@@ -76,9 +77,11 @@ def run_epoch(
                     labels=y,
                 )[1]  # [1] returns logits
             else:
-                # outputs.shape: (batch_size, num_classes)
-                outputs = model(x)
-
+                if scaler:
+                    with autocast():
+                        outputs = model(x)
+                        loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
+                else: outputs = model(x)
                 
             output_df = pd.DataFrame()
 
@@ -108,7 +111,8 @@ def run_epoch(
             for class_ind in range(probs.shape[1]):
                 output_df[f"pred_prob_{run_name}_{class_ind}"] = probs[:, class_ind]
 
-            loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
+            if not scaler:
+                loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
 
             if is_training:
                 if (args.model.startswith("bert") and args.use_bert_params): 
@@ -120,8 +124,13 @@ def run_epoch(
                     model.zero_grad()
                 else:
                     optimizer.zero_grad()
-                    loss_main.backward()
-                    optimizer.step()
+                    if scaler:
+                        scaler.scale(loss_main).backward()
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        loss_main.backward()
+                        optimizer.step()
 
             if is_training and (batch_idx + 1) % log_every == 0:
                 run_stats = loss_computer.get_stats(model, args)
@@ -252,6 +261,10 @@ def train(
         else:
             scheduler = None
 
+    if args.mixed_precision:
+        scaler = GradScaler()
+    else: scaler = None
+
     best_val_acc = 0
     for epoch in range(epoch_offset, epoch_offset + args.n_epochs):
         logger.write("\nEpoch [%d]:\n" % epoch)
@@ -260,6 +273,7 @@ def train(
             epoch,
             model,
             optimizer,
+            scaler,
             dataset["train_loader"],
             train_loss_computer,
             logger,
@@ -292,6 +306,7 @@ def train(
             epoch,
             model,
             optimizer,
+            scaler,
             dataset["val_loader"],
             val_loss_computer,
             logger,
@@ -322,6 +337,7 @@ def train(
                 epoch,
                 model,
                 optimizer,
+                scaler,
                 dataset["test_loader"],
                 test_loss_computer,
                 None,

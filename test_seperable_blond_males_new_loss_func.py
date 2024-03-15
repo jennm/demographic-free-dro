@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings('ignore')
+
 import argparse
 import gc
 import json
@@ -89,9 +92,12 @@ class CelebADataset(Dataset):
                 else:
                     class_labels.append(0)
             class_labels = torch.tensor(class_labels, dtype=torch.float)
-            return X, y_array, class_labels
 
-        return X, y_array
+            self.len_dataset = 10
+            return X[:10], y_array[:10], class_labels[:10]
+        
+        self.len_dataset = 10
+        return X[:10], y_array[:10]
         
 
     def __len__(self):
@@ -141,6 +147,7 @@ def hook_fn(module, input, output):
     
 
 def get_hooks(model):
+    print('in get hooks')
     hooks = []
     num_layers = sum(1 for _ in model.modules())
     print('model num layers', num_layers)
@@ -158,23 +165,25 @@ def setup(args):
     model = get_model(
         model=args.model,
         pretrained=not args.train_from_scratch,
-        resume=True,
+        resume=False,
         n_classes=num_classes,
         dataset=args.dataset,
         log_dir=args.log_dir,
     )
+    model.to('cuda:0' if torch.cuda.is_available() else 'cpu')
     get_hooks(model)
     shared_dl_args = {'batch_size': args.batch_size, 'num_workers': args.num_workers}
     return model, dataset, shared_dl_args, num_classes
 
 def collate_func(batch, pretrained_model, criterion, layer_num):
+    print('CURRENT DEVICE', torch.cuda.current_device())
     global tail_cache
     inputs = torch.stack([item['image'] for item in batch])
     labels = torch.stack([item['label'] for item in batch])
     class_labels = torch.stack([item['class_labels'] for item in batch])
     idxs = [item['idx'] for item in batch]
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    device = torch.device(torch.cuda.current_device() if torch.cuda.is_available() else "cpu")
 
     with torch.no_grad():
         # Forward pass through the 5th to last layer
@@ -186,12 +195,12 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
         labels = labels.to(device)
         loss = criterion(pred, labels)
 
-
     embeddings = torch.cat(tuple([tail_cache[i][layer_num + 1].to(device) for i in list(tail_cache.keys())]), dim=0)
     data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': labels, 'class_label': class_labels, 'idxs': idxs}
     tail_cache = dict()
-    gc.collect()
-    torch.cuda.empty_cache()
+
+    # gc.collect()
+    # torch.cuda.empty_cache()
 
     return data
 
@@ -230,21 +239,26 @@ def train_test_classifier(args):
     # data_to_save = {'input_size': [], 'num_classes': [], 'classifiers': []}
     groups_from_classifiers = dict()
     group_counts = list()
-    
 
     dataloaders = create_dataloader(old_model, datasets, shared_dl_args, 3)
+    print('created dataloaders')
+
     count = 0
     for data_type in ['train', 'test', 'val']:
+        print('datatype')
         for batch in dataloaders[data_type]:
+            print('batch')
             idxs = batch['idxs']
-            for idx in idxs:
-                groups_from_classifiers[idx] = [0]
-                count += 1
+            groups_from_classifiers.update({idx: [0] for idx in idxs})
+            count += len(idxs)
+
+    exit()
     
     group_num = 1
     group_counts.append(count)
     count = 0
 
+    exit()
     
     for i in range(5):
         print(f'Layer {i}')

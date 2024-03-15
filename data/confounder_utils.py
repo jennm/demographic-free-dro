@@ -6,6 +6,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from models import model_attributes
 from data.celebA_dataset import CelebADataset
+from data.colored_mnist_dataset import ColoredMNISTDataset
 from data.cub_dataset import CUBDataset
 from data.dro_classifiers_dataset import DROClassifiersDataset
 from data.dro_dataset import DRODataset
@@ -29,6 +30,9 @@ confounder_settings = {
     'jigsaw':{
         'constructor': JigsawDataset
     },
+    "ColoredMNIST" : {
+        'constructor': ColoredMNISTDataset
+    }
 }
 
 

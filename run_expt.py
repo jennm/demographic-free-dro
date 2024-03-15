@@ -8,6 +8,10 @@ from tqdm import tqdm
 import numpy as np
 import wandb
 from copy import deepcopy
+import math
+import time
+import matplotlib.pyplot as plt
+import umap
 
 from models import model_attributes
 from data.data import dataset_attributes, shift_types, prepare_data, log_data
@@ -16,6 +20,32 @@ from data import folds
 from utils import set_seed, Logger, CSVBatchLogger, log_args, get_model, hinge_loss
 from train import train
 from data.folds import Subset, ConcatDataset
+
+def get_subset(
+    dataset,
+    seed=0,
+    fraction=0.2
+):
+    random = np.random.RandomState(seed)
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    sz = int(math.ceil(len(indices) * fraction))
+    indices = indices[:sz]
+    split = Subset(dataset, indices)
+        
+    # Wrap in DRODataset Objects
+    data = dro_dataset.DRODataset(
+        split,
+        process_item_fn=None,
+        n_groups=dataset.n_groups,
+        n_classes=dataset.n_classes,
+        group_str_fn=dataset.group_str,
+    )
+
+    print('NEW SIZE', len(indices))
+
+    return data
 
 
 def main(args):
@@ -58,6 +88,10 @@ def main(args):
     elif args.shift_type == "label_shift_step":
         raise NotImplementedError
         train_data, val_data = prepare_data(args, train=True)
+
+    if args.shrink:
+        print('SHRINKING')
+        train_data, val_data, test_data = get_subset(train_data), get_subset(val_data), get_subset(test_data)
 
     #########################################################################
     ###################### Prepare data for our method ######################
@@ -109,7 +143,7 @@ def main(args):
                 group_str_fn=train_data.group_str,
                 new_up_weight_array=up_weight_array
             )
-        else:
+        elif not args.upweight_misclassified:
             upsampled_points = Subset(train_data,
                                     list(aug_indices) * up_weight_factor)
             # Convert to DRODataset
@@ -131,21 +165,25 @@ def main(args):
         "batch_size": args.batch_size,
         "num_workers": 4,
         "pin_memory": True,
+        "persistent_workers": True
     }
     train_loader = dro_dataset.get_loader(train_data,
                                           train=True,
                                           reweight_groups=args.reweight_groups,
+                                          upweight_misclassified=aug_indices if args.upweight_misclassified else None,
                                           **loader_kwargs)
 
     val_loader = dro_dataset.get_loader(val_data,
                                         train=False,
                                         reweight_groups=None,
+                                        upweight_misclassified=None,
                                         **loader_kwargs)
 
     if test_data is not None:
         test_loader = dro_dataset.get_loader(test_data,
                                              train=False,
                                              reweight_groups=None,
+                                             upweight_misclassified=None,
                                              **loader_kwargs)
 
     data = {}
@@ -172,11 +210,33 @@ def main(args):
     if args.wandb:
         wandb.watch(model)
 
+
+    # TODO: finish implementing umap visualization
+    # if args.pretrained_umap:
+    #     representations = []
+    #     labels = []
+    #     for images, labels_batch in train_loader:
+    #         outputs = model.fc1(model.flatten(images))
+    #         representations.extend(outputs.detach().numpy())
+    #         labels.extend(labels_batch.numpy())
+
+    #     # Step 5: Apply UMAP
+    #     reducer = umap.UMAP()
+    #     embedding = reducer.fit_transform(representations)
+
+    #     # Visualize UMAP
+    #     plt.figure(figsize=(10, 8))
+    #     plt.scatter(embedding[:, 0], embedding[:, 1], c=labels, cmap='tab10', s=10)
+    #     plt.colorbar()
+    #     plt.title('UMAP Visualization of MNIST Representations')
+    #     plt.show()
+    
+
     logger.flush()
 
     ## Define the objective
     if args.hinge:
-        assert args.dataset in ["CelebA", "CUB"]  # Only supports binary
+        assert args.dataset in ["CelebA", "CUB", "ColoredMNIST"]  # Only supports binary
         criterion = hinge_loss
     else:
         criterion = torch.nn.CrossEntropyLoss(reduction="none")
@@ -198,7 +258,9 @@ def main(args):
                                     mode=mode)
     test_csv_logger = CSVBatchLogger(os.path.join(args.log_dir, f"test.csv"),
                                      test_data.n_groups,
-                                     mode=mode)
+                                    mode=mode)
+
+    s = time.time()
     train(
         model,
         criterion,
@@ -212,6 +274,8 @@ def main(args):
         csv_name=args.fold,
         wandb=wandb if args.wandb else None,
     )
+    e = time.time()
+    print('TOTAL TRAINING TIME', e - s)
 
     train_csv_logger.close()
     val_csv_logger.close()
@@ -320,6 +384,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--aug_col", default=None)
 
+    parser.add_argument("--shrink", action="store_true", default=False)
+    # TODO
+    parser.add_argument("--mixed_precision", action="store_true", default=False)
+
     parser.add_argument("--classifier_groups", default=False)
     parser.add_argument(
         "--group_info_path", 
@@ -327,6 +395,7 @@ if __name__ == "__main__":
         help="path to group info")
 
     parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
 
     args = parser.parse_args()
     
