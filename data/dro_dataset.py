@@ -76,11 +76,19 @@ class DRODataset(Dataset):
             return x.size()
 
 
-def get_loader(dataset, train, reweight_groups, **kwargs):
+def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs):
     if not train:  # Validation or testing
         assert reweight_groups is None
         shuffle = False
         sampler = None
+    elif upweight_misclassified is not None:
+        print('UPWEIGHT MISCLASSIFIED')
+        misclassified_count = len(upweight_misclassified)
+        correct_count = len(dataset) - misclassified_count
+        correct_wrong_weights = [len(dataset) / correct_count, len(dataset) / misclassified_count]
+        weights = [correct_wrong_weights[1] if i in upweight_misclassified else correct_wrong_weights[0] for i in range(len(dataset))]
+        shuffle = False
+        sampler = WeightedRandomSampler(weights, len(dataset), replacement=True)
     elif not reweight_groups:  # Training but not reweighting
         shuffle = True
         sampler = None

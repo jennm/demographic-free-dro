@@ -87,6 +87,8 @@ def generate_downstream_commands(args):
     else:
         methods = [args.method]
 
+    joint_dro_alpha = None
+
     for method in methods:
         if method == "JTT":
             up_weights = [20, 50, 100] 
@@ -120,9 +122,11 @@ def generate_downstream_commands(args):
         else:
             print(f"Unknown method {method}")
             continue
-
+        
         for up_weight in up_weights:
             sub_exp_name = f"{method}_upweight_{up_weight}_epochs_{args.n_epochs}_lr_{args.lr}_weight_decay_{args.weight_decay}"
+            sub_exp_name += '_REWEIGHT' if args.upweight_misclassified else ''
+            sub_exp_name += '_LAMBDA_LOSS' if args.lambda_loss else ''
             # sub_exp_dir: results/dataset/exp_name/sub_exp_name
             sub_exp_dir = join(exp_dir, sub_exp_name)
             # job_script_path: results/dataset/exp_name/sub_exp_name/job.sh
@@ -133,42 +137,54 @@ def generate_downstream_commands(args):
             if not os.path.exists(sub_exp_dir):
                 os.makedirs(sub_exp_dir)
 
-            with open(job_script_path, "w") as file:
-                file.write(
-                    initialization_text.format(
-                        args.memory, method + "_" + args.exp_name
-                    )
-                )
-                print(
-                    f"python run_expt.py -s confounder -d {args.dataset} -t {args.target} -c {confounder_name}"
-                    + f" --batch_size {args.batch_size} --root_dir {args.root_dir} --n_epochs {args.n_epochs}"
-                    + f" --aug_col {aug_col} --log_dir {training_output_dir}"
-                    + f" --metadata_path {metadata_path}"
-                    + f" --lr {args.lr} --weight_decay {args.weight_decay} --up_weight {up_weight}"
-                    + f" --metadata_csv_name {args.metadata_csv_name}  --model {args.model} --use_bert_params {args.use_bert_params}"
-                    + (" --wandb" if not args.no_wandb else "")
-                    + (f" --loss_type {loss_type}")
-                    + (" --reweight_groups" if loss_type == "group_dro" else "")
-                    + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
-                    + (f" --shrink" if args.shrink else "")
-                )
+            write_script(job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha)
 
-                file.write(
-                    f"python run_expt.py -s confounder -d {args.dataset} -t {args.target} -c {confounder_name}"
-                    + f" --batch_size {args.batch_size} --root_dir {args.root_dir} --n_epochs {args.n_epochs}"
-                    + f" --aug_col {aug_col} --log_dir {training_output_dir} --metadata_path {metadata_path}"
-                    + f" --lr {args.lr} --weight_decay {args.weight_decay} --up_weight {up_weight} --metadata_csv_name {args.metadata_csv_name} --model {args.model} --use_bert_params {args.use_bert_params}"
-                    + (" --wandb" if not args.no_wandb else "")
-                    + (f" --loss_type {loss_type}")
-                    + (" --reweight_groups" if loss_type == "group_dro" else "")
-                    + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
-                    + (f" --shrink" if args.shrink else "")
-                )
-                
-                file.write("\n")
-                file.write(final_text)
-            print(f"\nsaved in {job_script_path}\n\n")
-#             subprocess.run(f"sbatch {job_script_path}", check=True, shell=True)
+
+
+def write_script(job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha):
+    with open(job_script_path, "w") as file:
+        file.write(
+            initialization_text.format(
+                args.memory, method + "_" + args.exp_name
+            )
+        )
+        print(
+            f"python run_expt.py -s confounder -d {args.dataset} -t {args.target} -c {confounder_name}"
+            + f" --batch_size {args.batch_size} --root_dir {args.root_dir} --n_epochs {args.n_epochs}"
+            + f" --aug_col {aug_col} --log_dir {training_output_dir}"
+            + f" --metadata_path {metadata_path}"
+            + f" --lr {args.lr} --weight_decay {args.weight_decay} --up_weight {up_weight}"
+            + f" --metadata_csv_name {args.metadata_csv_name}  --model {args.model} --use_bert_params {args.use_bert_params}"
+            + (" --wandb" if not args.no_wandb else "")
+            + (f" --loss_type {loss_type}")
+            + (" --reweight_groups" if loss_type == "group_dro" else "")
+            + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
+            + (" --shrink" if args.shrink else "")
+            + (" --lambda_loss" if args.lambda_loss else "")
+            + (" --mixed_precision" if args.mixed_precision else "")
+            + (" --upweight_misclassified" if args.upweight_misclassified else "")
+    
+        )
+
+        file.write(
+            f"python run_expt.py -s confounder -d {args.dataset} -t {args.target} -c {confounder_name}"
+            + f" --batch_size {args.batch_size} --root_dir {args.root_dir} --n_epochs {args.n_epochs}"
+            + f" --aug_col {aug_col} --log_dir {training_output_dir} --metadata_path {metadata_path}"
+            + f" --lr {args.lr} --weight_decay {args.weight_decay} --up_weight {up_weight} --metadata_csv_name {args.metadata_csv_name} --model {args.model} --use_bert_params {args.use_bert_params}"
+            + (" --wandb" if not args.no_wandb else "")
+            + (f" --loss_type {loss_type}")
+            + (" --reweight_groups" if loss_type == "group_dro" else "")
+            + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
+            + (" --shrink" if args.shrink else "")
+            + (" --lambda_loss" if args.lambda_loss else "")
+            + (" --mixed_precision" if args.mixed_precision else "")
+            + (" --upweight_misclassified" if args.upweight_misclassified else "")
+        )
+        
+        file.write("\n")
+        file.write(final_text)
+    print(f"\nsaved in {job_script_path}\n\n")
+
 
 
 if __name__ == "__main__":
@@ -238,6 +254,13 @@ if __name__ == "__main__":
         default=False
     )
 
+    parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--mixed_precision", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
+    parser.add_argument("--downsample", action="store_true", default=False)
+
+
+
     args = parser.parse_args()
 
     args.output_csv_name = args.csv_name
@@ -263,7 +286,7 @@ if __name__ == "__main__":
         args.target = "Blond_Hair"
         args.confounder_name = "Male"
         args.n_epochs = 50
-        args.model = "resnet50"
+        args.model = "cnn" if args.downsample else "resnet50"
         args.memory = 30 if not args.memory else args.memory
         args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     elif args.dataset == "MultiNLI":
@@ -293,6 +316,7 @@ if __name__ == "__main__":
         args.confounder_name = "confounder"
         args.n_epochs = 5
         args.model = "cnn"
+        args.batch_size = 32
         args.memory = 30 if not args.memory else args.memory
         args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     else:

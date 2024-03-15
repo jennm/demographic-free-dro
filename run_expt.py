@@ -143,7 +143,7 @@ def main(args):
                 group_str_fn=train_data.group_str,
                 new_up_weight_array=up_weight_array
             )
-        else:
+        elif not args.upweight_misclassified:
             upsampled_points = Subset(train_data,
                                     list(aug_indices) * up_weight_factor)
             # Convert to DRODataset
@@ -170,17 +170,20 @@ def main(args):
     train_loader = dro_dataset.get_loader(train_data,
                                           train=True,
                                           reweight_groups=args.reweight_groups,
+                                          upweight_misclassified=aug_indices if args.upweight_misclassified else None,
                                           **loader_kwargs)
 
     val_loader = dro_dataset.get_loader(val_data,
                                         train=False,
                                         reweight_groups=None,
+                                        upweight_misclassified=None,
                                         **loader_kwargs)
 
     if test_data is not None:
         test_loader = dro_dataset.get_loader(test_data,
                                              train=False,
                                              reweight_groups=None,
+                                             upweight_misclassified=None,
                                              **loader_kwargs)
 
     data = {}
@@ -392,6 +395,7 @@ if __name__ == "__main__":
         help="path to group info")
 
     parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
 
     args = parser.parse_args()
     

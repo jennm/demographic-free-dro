@@ -119,7 +119,13 @@ def main(args):
     root = f"{exp_name}/train_downstream_{folder_name}/final_epoch{final_epoch}"
     
     sbatch_command = (
-            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" + (f" --batch_size {args.batch_size}" if args.batch_size else "") + (f" --shrink" if args.shrink else "")
+            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" 
+            + (f" --batch_size {args.batch_size}" if args.batch_size else "") 
+            + (f" --shrink" if args.shrink else "") 
+            + (" --mixed_precision" if args.mixed_precision else "")
+            + (" --downsample" if args.downsample else "") 
+            + (" --lambda_loss" if args.lambda_loss else "")
+            + (" --upweight_misclassified" if args.upweight_misclassified else "")
         )
     print(sbatch_command)
     if args.deploy:
@@ -146,6 +152,10 @@ if __name__ == "__main__":
     parser.add_argument("--folder_name", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--shrink", action="store_true", default=False)
+    parser.add_argument("--mixed_precision", action="store_true", default=False)
+    parser.add_argument("--downsample", action="store_true", default=False)
+    parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
 
     args = parser.parse_args()
     main(args)

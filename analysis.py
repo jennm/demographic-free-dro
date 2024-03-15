@@ -102,7 +102,9 @@ def print_accs(
     for split in splits:
         assert split in dfs
 
+    print('early stopping epoch')
     early_stopping_epoch = np.argmax(dfs["val"]["robust_acc"].values)
+    print('done argmaxing')
 
     epochs = []
     assert early_stop or (epoch_to_eval is not None)
@@ -225,7 +227,7 @@ if __name__ == "__main__":
     args.training_output_dir = metadata_dir
     runs = [
         folder for folder in os.listdir(args.training_output_dir)
-        if args.exp_substring in folder
+        if args.exp_substring == folder
     ]
 
     print(runs)
@@ -238,10 +240,10 @@ if __name__ == "__main__":
             training_output_dir = os.path.join(args.training_output_dir,
                                             sub_exp_name, "model_outputs")
             
-            print(training_output_dir)
             train_path = os.path.join(training_output_dir, "train.csv")
             val_path = os.path.join(training_output_dir, "val.csv")
             test_path = os.path.join(training_output_dir, "test.csv")
+
             train_df = pd.read_csv(train_path)
             val_df = pd.read_csv(val_path)
             test_df = pd.read_csv(test_path)
@@ -253,6 +255,8 @@ if __name__ == "__main__":
             dfs["train"] = train_df
             dfs["val"] = val_df
             dfs["test"] = test_df
+
+            print('TRAIN DF', train_df)
             
             print(f"Downstream Accuracies for {sub_exp_name} with {group_count} groups.")
             with open(training_output_dir + "/val_accuracies.txt", "a") as text_file:
@@ -261,7 +265,7 @@ if __name__ == "__main__":
             # Print average and worst group accuracies for val
             print_accs(
                 dfs,
-                args.training_output_dir,
+                training_output_dir,
                 params=None,
                 epoch_to_eval=None,
                 print_avg=True,

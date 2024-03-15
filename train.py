@@ -35,8 +35,7 @@ def run_epoch(
     scheduler=None,
     csv_name=None,
     wandb_group=None,
-    wandb=None,
-    lambda_weights=None
+    wandb=None
 ):
     """
     scheduler is only used inside this function if model is bert.
@@ -81,7 +80,7 @@ def run_epoch(
                 if scaler:
                     with autocast():
                         outputs = model(x)
-                        loss_main = loss_computer.loss(outputs, y, g, is_training)
+                        loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
                 else: outputs = model(x)
                 
             output_df = pd.DataFrame()
@@ -113,7 +112,7 @@ def run_epoch(
                 output_df[f"pred_prob_{run_name}_{class_ind}"] = probs[:, class_ind]
 
             if not scaler:
-                loss_main = loss_computer.loss(outputs, y, g, is_training)
+                loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
 
             if is_training:
                 if (args.model.startswith("bert") and args.use_bert_params): 
