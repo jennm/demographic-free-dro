@@ -78,7 +78,7 @@ class ColoredMNIST(Dataset):
         colors = []
         for ix, _ in enumerate(self.new_classes):
             rgb = cmap(cmap_vals[ix])[:3]
-            rgb = [int(np.float(x)) for x in np.array(rgb) * 255]
+            rgb = [int(float(x)) for x in np.array(rgb) * 255]
             colors.append(rgb)
         return colors
 
