@@ -60,7 +60,6 @@ class CelebADataset(Dataset):
         # Get the y values
         target_idx = attr_idx(self.target_name)
         y_array = attrs_df[:, target_idx]
-        self._num_supclasses = np.amax(y_array).item() + 1
 
         # Read in train/val/test splits
         split_df = pd.read_csv(os.path.join(self.root, 'list_eval_partition.csv'),
