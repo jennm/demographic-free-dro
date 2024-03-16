@@ -1,6 +1,5 @@
 import os
 import pandas as pd
-from PIL import Image
 import numpy as np
 from models import model_attributes
 import torchvision.transforms as transforms
