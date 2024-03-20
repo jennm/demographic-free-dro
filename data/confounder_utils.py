@@ -7,6 +7,7 @@ import torchvision.transforms as transforms
 from models import model_attributes
 from data.celebA_dataset import CelebADataset
 from data.colored_mnist_dataset import ColoredMNISTDataset
+from data.colored_mnist_hard_dataset import ColoredMNIST_HARD_Dataset
 from data.cub_dataset import CUBDataset
 from data.dro_classifiers_dataset import DROClassifiersDataset
 from data.dro_dataset import DRODataset
@@ -32,6 +33,9 @@ confounder_settings = {
     },
     "ColoredMNIST" : {
         'constructor': ColoredMNISTDataset
+    },
+    "ColoredMNIST_HARD" : {
+        'constructor': ColoredMNIST_HARD_Dataset
     }
 }
 

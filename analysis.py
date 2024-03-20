@@ -207,7 +207,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",
                         type=str,
                         default="CUB",
-                        help="CUB, CelebA, ColoredMNIST, or MultiNLI")
+                        help="CUB, CelebA, ColoredMNIST, ColoredMNIST_HARD, or MultiNLI")
     # Default arguments (don't change)
     parser.add_argument("--results_dir", type=str, default="results/")
     parser.add_argument("--exp_substring", type=str, default="")
