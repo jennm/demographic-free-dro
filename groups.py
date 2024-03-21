@@ -66,8 +66,8 @@ class FindGroups():
 
     def get_groups_default(self): # to be changed to get_group code
         self.get_classifer_default()
-        if type(arg.layer_nums) == list:
-            for i in args.layer_nums[1:]:
+        if type(self.args.layer_nums) == list:
+            for i in self.args.layer_nums[1:]:
                 self.dataloaders = create_dataloader(self.old_model, self.datasets, self.shared_dl_args, i - 1) # assuming that if layer given is 1 we want i to be 0
                 self.get_classifer_default()
 
@@ -174,7 +174,7 @@ class FindGroups():
 
         count = 0
         for data_type in ['train', 'val']:
-            print(self.group_num, data_type)
+            # print(self.group_num, data_type)
             for batch in self.dataloaders[data_type]:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
@@ -209,11 +209,11 @@ class FindGroups():
         groups_from_classifiers_list = list()
         for idx in example_idxs:
             groups_from_classifiers_list.append(self.groups_from_classifiers[idx])
-        print(groups_from_classifiers_list)
+        # print('groups from classifiers list:', groups_from_classifiers_list)
         groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
 
         # torch.save(data_to_save, "classifiers.pt")
-        torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(group_counts)}, "groups_from_classifiers_info.pt")
+        torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, "groups_from_classifiers_info.pt")
 
         return log_model, accuracy
 
@@ -307,7 +307,7 @@ def main():
 
     find_groups = FindGroups(args) # need to add an argument for this
     group_counts = find_groups.find_groups()
-    print(group_counts)
+    print('group_counts:', group_counts)
     # find_groups(args)
     # log_model, acc = train_test_classifier(args)
     # print('Accuracy:', acc)
