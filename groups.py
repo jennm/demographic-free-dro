@@ -10,6 +10,7 @@ from data.data import dataset_attributes
 from classifier import LogisticRegressionModel
 from models import model_attributes
 from get_celeba_model_embeddings import get_model_and_dataset_celeba
+from get_mnist_model_embeddings import get_model_and_dataset_mnist
 # from utils import get_model
 
 
@@ -27,6 +28,8 @@ class FindGroups():
 
         if args.dataset == 'celebA':
             self.dataloaders, self.old_model, self.dataset, self.shared_dl_args, self.num_classes = get_model_and_dataset_celeba(self.args, layer_num)
+        elif args.dataset == 'ColoredMNIST':
+            self.dataloaders, self.old_model, self.dataset, self.shared_dl_args, self.num_classes = get_model_and_dataset_mnist(self.args, layer_num)
         else:
             self.dataloaders, self.old_model, self.dataset, self.shared_dl_args, self.num_classes = get_model_and_dataset_celeba(self.args, layer_num) # to be changed for other datasets
 
@@ -35,7 +38,7 @@ class FindGroups():
         count = 0
         for data_type in list(self.dataloaders.keys()):
             for batch in self.dataloaders[data_type]:
-                print('embedding shape:', batch['embeddings'].shape)
+                # print('embedding shape:', batch['embeddings'].shape)
                 idxs = batch['idxs']
                 for idx in idxs:
                     self.groups_from_classifiers[idx] = [0]
@@ -128,6 +131,8 @@ class FindGroups():
                 class_labels = class_labels.to(torch.long)
 
                 # Calculate loss
+                # print('outputs shape',outputs.shape)
+                # print('class_labels shape', class_labels.shape)
                 loss =  criterion(outputs, class_labels)
                 loss_mean = torch.mean(loss)
 
@@ -147,7 +152,7 @@ class FindGroups():
             with torch.no_grad():
                 correct = 0
                 total = 0
-                for batch in dataloaders['val']:
+                for batch in self.dataloaders['val']:
                     embeddings = batch['embeddings']
                     loss = batch['loss']
                     class_labels = batch['class_label']
@@ -167,29 +172,29 @@ class FindGroups():
                 gc.collect()
                 torch.cuda.empty_cache()
 
-                count = 0
-                for data_type in ['train', 'val']:
-                    print(group_num, data_type)
-                    for batch in dataloaders[data_type]:
-                        embeddings = batch['embeddings']
-                        idxs = batch['idxs']
-                        embeddings = embeddings.view(embeddings.size(0), -1)
-                        outputs = log_model(embeddings)
-                        _, predicted = torch.max(outputs, 1)
-                        for i in range(len(idxs)):
-                            idx = idxs[i]
-                            if predicted[i].item() == 1:
-                                self.groups_from_classifiers[idx].append(self.group_num)
-                                count += 1
-                            else:
-                                self.groups_from_classifiers[idx].append(-1)
-                    gc.collect()
-                    torch.cuda.empty_cache()
-                self.group_counts.append(count)
-                self.group_num += 1
+        count = 0
+        for data_type in ['train', 'val']:
+            print(self.group_num, data_type)
+            for batch in self.dataloaders[data_type]:
+                embeddings = batch['embeddings']
+                idxs = batch['idxs']
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                outputs = log_model(embeddings)
+                _, predicted = torch.max(outputs, 1)
+                for i in range(len(idxs)):
+                    idx = idxs[i]
+                    if predicted[i].item() == 1:
+                        self.groups_from_classifiers[idx].append(self.group_num)
+                        count += 1
+                    else:
+                        self.groups_from_classifiers[idx].append(-1)
+            gc.collect()
+            torch.cuda.empty_cache()
+        self.group_counts.append(count)
+        self.group_num += 1
 
-                gc.collect()
-                torch.cuda.empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 
@@ -199,11 +204,12 @@ class FindGroups():
             # data_to_save['num_classes'].append(num_classes)
             # data_to_save['classifiers'].append(log_model.state_dict())
 
-        example_idxs = list(groups_from_classifiers.keys())
+        example_idxs = list(self.groups_from_classifiers.keys())
         example_idxs.sort()
         groups_from_classifiers_list = list()
         for idx in example_idxs:
-            groups_from_classifiers_list.append(groups_from_classifiers[idx])
+            groups_from_classifiers_list.append(self.groups_from_classifiers[idx])
+        print(groups_from_classifiers_list)
         groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
 
         # torch.save(data_to_save, "classifiers.pt")
@@ -241,7 +247,63 @@ def main():
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--test_celebA", action="store_true", default=False)
     parser.add_argument('--layer_nums', type=parse_list, help='Input list of integers', required=True)
+    parser.add_argument("--target_name")
+    parser.add_argument("--confounder_name")
     args = parser.parse_args()
+
+    if args.dataset == "CUB":
+        args.root_dir = "./cub"
+        args.target = "waterbird_complete95"
+        args.confounder_name = "forest2water2"
+        args.model = "resnet50"
+        # args.batch_size = 64
+        # args.n_epochs = 300
+        # args.memory = 30 if not args.memory else args.memory
+        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    elif args.dataset == "CelebA":
+        args.root_dir = "./"
+        args.target = "Blond_Hair"
+        args.confounder_name = "Male"
+        ## args.n_epochs = 50
+        # args.model = "cnn" if args.downsample else "resnet50" #old
+        args.model = "resnet50"
+        ## args.memory = 30 if not args.memory else args.memory
+        ## args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    elif args.dataset == "MultiNLI":
+        args.root_dir = "./"
+        args.target = "gold_label_random"
+        args.confounder_name = "sentence2_has_negation"
+        # args.batch_size = 32
+        args.model = "bert"
+        # args.memory = 30 if not args.memory else args.memory
+        # args.n_epochs = 5
+        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    elif args.dataset == "jigsaw":
+        args.root_dir = "./jigsaw"
+        args.target = "toxicity"
+        args.confounder_name = "identity_any"
+#         args.lr = 1e-5 # no-bert-param: 2e-5
+#         args.weight_decay = 0.01 # no-bert-param: 0.0
+#         args.batch_size = 16 # no-bert-param: 24
+        # args.n_epochs = 3
+        args.model = "bert-base-uncased"
+        # args.memory = 60 if not args.memory else args.memory
+        # args.final_epoch = 0
+        # args.metadata_csv_name = "all_data_with_identities.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    elif args.dataset == "ColoredMNIST":
+        args.root_dir = "./"
+        args.target = "target"
+        args.confounder_name = "confounder"
+        # args.n_epochs = 5
+        args.model = "cnn"
+        # args.batch_size = 32
+        # args.memory = 30 if not args.memory else args.memory
+        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
+    else:
+        assert False, f"{args.dataset} is not a known dataset."
+
+
+    print("model", args.model)
 
     find_groups = FindGroups(args) # need to add an argument for this
     group_counts = find_groups.find_groups()
