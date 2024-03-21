@@ -26,6 +26,8 @@ def main(args):
         metadata_path = "./jigsaw/data/all_data_with_identities.csv"
     elif args.dataset == "ColoredMNIST":
         metadata_path = "./coloredMNIST/data/metadata.csv"
+    elif args.dataset == "ColoredMNIST_HARD":
+        metadata_path = "./coloredMNIST_HARD/data/metadata.csv"
     else: 
         raise NotImplementedError 
     
@@ -61,7 +63,7 @@ def main(args):
                 (merged_csv["gold_label"] == 1)
                 & (merged_csv["sentence2_has_negation"] == 1)
             )
-    elif dataset == "ColoredMNIST":
+    elif dataset == "ColoredMNIST" or dataset == "ColoredMNIST_HARD":
         assert 0 == np.sum(merged_csv[merged_csv["split"] == 0]["target"] != merged_csv[merged_csv["split"] == 0][f"y_true_None_epoch_{final_epoch}_val"])
         merged_csv["spurious"] = (merged_csv["target"] == merged_csv["confounder"])
     else: 
@@ -99,7 +101,7 @@ def main(args):
         train_probs_df["probs_1"] = probs[:,1]
         if dataset == 'CelebA':
             train_probs_df["confidence"] = train_probs_df["Blond_Hair"] * train_probs_df["probs_1"] + (1 - train_probs_df["Blond_Hair"]) * train_probs_df["probs_0"]
-        elif dataset == 'ColoredMNIST':
+        elif dataset == 'ColoredMNIST' or dataset == "ColoredMNIST_HARD":
             train_probs_df["confidence"] = train_probs_df["target"] * train_probs_df["probs_1"] + (1 - train_probs_df["target"]) * train_probs_df["probs_0"]
         elif dataset == 'CUB':
             train_probs_df["confidence"] = train_probs_df["y"] * train_probs_df["probs_1"] + (1 - train_probs_df["y"]) * train_probs_df["probs_0"]
@@ -107,7 +109,7 @@ def main(args):
             train_probs_df["confidence"] = (train_probs_df["toxicity"] >= 0.5) * train_probs_df["probs_1"] + (train_probs_df["toxicity"] < 0.5)  * train_probs_df["probs_0"]
     
     train_probs_df[f"confidence_thres{args.conf_threshold}"] = (train_probs_df["confidence"] < args.conf_threshold).apply(np.int64)
-    if dataset == 'CelebA' or dataset == 'ColoredMNIST':
+    if dataset == 'CelebA' or dataset == 'ColoredMNIST' or dataset == "ColoredMNIST_HARD":
         assert(np.sum(train_probs_df[f"confidence_thres{args.conf_threshold}"] != train_probs_df["wrong_1_times"]) == 0)
     
     # Save csv into new dir for the run, and generate downstream runs
@@ -135,7 +137,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset", type=str, default="CelebA", help="CUB, CelebA, MultiNLI, or ColoredMNIST"
+        "--dataset", type=str, default="CelebA", help="CUB, CelebA, MultiNLI, ColoredMNIST, or ColoredMNIST_HARD"
     )
     parser.add_argument(
         "--final_epoch",

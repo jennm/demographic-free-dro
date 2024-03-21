@@ -17,6 +17,9 @@ dataset_attributes = {
     "ColoredMNIST": {
         "root_dir": "coloredMNIST"
     },
+    "ColoredMNIST_HARD": {
+        "root_dir": "coloredMNIST_HARD"
+    },
     "MultiNLI": {
         "root_dir": "multinli"
     },

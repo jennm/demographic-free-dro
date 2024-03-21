@@ -236,7 +236,7 @@ def main(args):
 
     ## Define the objective
     if args.hinge:
-        assert args.dataset in ["CelebA", "CUB", "ColoredMNIST"]  # Only supports binary
+        assert args.dataset in ["CelebA", "CUB", "ColoredMNIST", "ColoredMNIST_HARD"]  # Only supports binary
         criterion = hinge_loss
     else:
         criterion = torch.nn.CrossEntropyLoss(reduction="none")

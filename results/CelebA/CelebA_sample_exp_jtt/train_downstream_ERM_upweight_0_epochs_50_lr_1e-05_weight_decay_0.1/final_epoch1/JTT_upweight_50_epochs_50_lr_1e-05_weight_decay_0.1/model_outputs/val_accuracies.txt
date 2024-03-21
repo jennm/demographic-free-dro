@@ -1,5 +1,0 @@
-Downstream Accuracies for JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1
-Downstream Accuracies for JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1
-Downstream Accuracies for JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1
-Downstream Accuracies for JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1
-Downstream Accuracies for JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1
