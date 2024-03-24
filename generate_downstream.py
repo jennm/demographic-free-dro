@@ -93,7 +93,7 @@ def generate_downstream_commands(args):
     for method in methods:
         if method == "JTT":
             up_weights = [20, 50, 100] 
-            loss_type = "erm"
+            loss_type = "jtt_fake_dro" if args.jtt_fake_dro else "erm"
             aug_col = args.aug_col
             confounder_name = args.confounder_name
         elif method == "ERM":
@@ -128,6 +128,7 @@ def generate_downstream_commands(args):
             sub_exp_name = f"{method}_upweight_{up_weight}_epochs_{args.n_epochs}_lr_{args.lr}_weight_decay_{args.weight_decay}"
             sub_exp_name += '_REWEIGHT' if args.upweight_misclassified else ''
             sub_exp_name += '_LAMBDA_LOSS' if args.lambda_loss else ''
+            sub_exp_name += '_JTT_FAKE_DRO' if args.jtt_fake_dro else ''
             # sub_exp_dir: results/dataset/exp_name/sub_exp_name
             sub_exp_dir = join(exp_dir, sub_exp_name)
             # job_script_path: results/dataset/exp_name/sub_exp_name/job.sh
@@ -160,7 +161,6 @@ def write_script(job_script_path, method, confounder_name, aug_col, training_out
             + (f" --loss_type {loss_type}")
             + (" --reweight_groups" if loss_type == "group_dro" else "")
             + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
-            + (" --shrink" if args.shrink else "")
             + (" --lambda_loss" if args.lambda_loss else "")
             + (" --mixed_precision" if args.mixed_precision else "")
             + (" --upweight_misclassified" if args.upweight_misclassified else "")
@@ -176,7 +176,6 @@ def write_script(job_script_path, method, confounder_name, aug_col, training_out
             + (f" --loss_type {loss_type}")
             + (" --reweight_groups" if loss_type == "group_dro" else "")
             + (f" --joint_dro_alpha {joint_dro_alpha}" if loss_type == "joint_dro" else "")
-            + (" --shrink" if args.shrink else "")
             + (" --lambda_loss" if args.lambda_loss else "")
             + (" --mixed_precision" if args.mixed_precision else "")
             + (" --upweight_misclassified" if args.upweight_misclassified else "")
@@ -249,16 +248,12 @@ if __name__ == "__main__":
         help="last epoch in training",
     )
 
-    parser.add_argument(
-        "--shrink",
-        action="store_true",
-        default=False
-    )
 
     parser.add_argument("--lambda_loss", action="store_true", default=False)
     parser.add_argument("--mixed_precision", action="store_true", default=False)
     parser.add_argument("--upweight_misclassified", action="store_true", default=False)
     parser.add_argument("--downsample", action="store_true", default=False)
+    parser.add_argument("--jtt_fake_dro", action="store_true", default=False)
 
 
 

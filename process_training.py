@@ -128,6 +128,7 @@ def main(args):
             + (" --downsample" if args.downsample else "") 
             + (" --lambda_loss" if args.lambda_loss else "")
             + (" --upweight_misclassified" if args.upweight_misclassified else "")
+            + (" --jtt_fake_dro" if args.jtt_fake_dro else "")
         )
     print(sbatch_command)
     if args.deploy:
@@ -158,6 +159,7 @@ if __name__ == "__main__":
     parser.add_argument("--downsample", action="store_true", default=False)
     parser.add_argument("--lambda_loss", action="store_true", default=False)
     parser.add_argument("--upweight_misclassified", action="store_true", default=False)
+    parser.add_argument("--jtt_fake_dro", action="store_true", default=False)
 
     args = parser.parse_args()
     main(args)
