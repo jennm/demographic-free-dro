@@ -21,7 +21,7 @@ class LossComputer:
         btl=False,
         joint_dro_alpha=None,
     ):
-        assert loss_type in ["group_dro", "erm", "joint_dro"]
+        assert loss_type in ["group_dro", "erm", "joint_dro", "jtt_fake_dro"]
 
         self.criterion = criterion
         self.loss_type = loss_type
@@ -70,6 +70,7 @@ class LossComputer:
 
         group_loss, group_count = self.compute_group_avg(
             per_sample_losses, group_idx)
+
         group_acc, group_count = self.compute_group_avg(
             (torch.argmax(yhat, 1) == y).float(), group_idx)
 
@@ -87,6 +88,13 @@ class LossComputer:
         elif self.loss_type == "joint_dro":
             actual_loss = self._joint_dro_loss_computer(per_sample_losses)
             weights = None
+        elif self.loss_type == "jtt_fake_dro":
+            jtt_group_idx = (torch.argmax(yhat, 1) != y).float()
+            jtt_group_loss, jtt_group_count = self.compute_group_avg(
+                per_sample_losses, jtt_group_idx)
+            actual_loss, weights = self.compute_robust_loss(
+                    jtt_group_loss, jtt_group_count)
+
         else:
             assert self.loss_type == "erm"
 

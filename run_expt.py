@@ -326,7 +326,7 @@ if __name__ == "__main__":
 
     # Objective
     parser.add_argument("--loss_type", default="erm",
-                        choices=["erm", "group_dro", "joint_dro"])
+                        choices=["erm", "group_dro", "joint_dro", "jtt_fake_dro"])
     parser.add_argument("--alpha", type=float, default=0.2)
     parser.add_argument("--generalization_adjustment", default="0.0")
     parser.add_argument("--automatic_adjustment",
