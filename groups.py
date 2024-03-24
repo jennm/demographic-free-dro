@@ -48,7 +48,10 @@ class FindGroups():
         self.group_counts.append(count)
         count = 0
 
-    def find_groups(self):
+    def find_groups(self, exp=False):
+        if exp:
+            self.exp_num_data_points_classifer_default()
+            return [0]
         if self.args.test_celebA:
             self.get_groups_default()
         
@@ -71,11 +74,155 @@ class FindGroups():
                 self.dataloaders = create_dataloader(self.old_model, self.datasets, self.shared_dl_args, i - 1) # assuming that if layer given is 1 we want i to be 0
                 self.get_classifer_default()
 
+    def get_performance_metrics(self, log_model, device):
+        log_model.eval()
+        tp = 0
+        fp = 0
+        tn = 0
+        fn = 0
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for batch in self.dataloaders['val']:
+                embeddings = batch['embeddings']
+                loss = batch['loss']
+                class_labels = batch['class_label']
+                class_labels = class_labels.to(device)
+                class_labels = class_labels.to(torch.long)
+                all_ones = torch.ones(class_labels.size(0), device=device)
+                all_zeros = torch.zeros(class_labels.size(0), device=device)
+
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                outputs = log_model(embeddings)
+
+                _, predicted = torch.max(outputs, 1)
+                tp += ((predicted == class_labels) & (predicted == all_ones)).sum().item()
+                fp += ((predicted != class_labels) & (predicted == all_ones)).sum().item()
+                tn += ((predicted == class_labels) & (predicted == all_zeros)).sum().item()
+                fn += ((predicted != class_labels) & (predicted == all_zeros)).sum().item()
+                total += class_labels.size(0)
+                correct += (predicted == class_labels).sum().item()
+
+            accuracy = correct / total
+            print(tp, fp, tn, fn)
+            print(f'Val Accuracy: {accuracy:.4f}')
+            ppv = tp/(max(1, tp+fp))
+            print(f'TPR: {tp/(max(1, tp+fn))}\tFPR: {fp/(max(1, tn+fp))}\tTNR: {tn/(max(1, tn+fp))}\tFNR: {fn/(max(1, tp+fn))}\tPPV: {ppv}\t1 - PPV: {1 - ppv}')
+
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    def exp_num_data_points_classifer_default(self):
+        # looks at how accuracy is affected when different sample amounts are used
+
+        # Set random seed for reproducibility
+        torch.manual_seed(42)
+        # mp.set_start_method('spawn')
+        count = 0
+
+        first_batch_embeddings = next(iter(self.dataloaders['train']))['embeddings']
+        first_batch_embeddings = first_batch_embeddings.view(first_batch_embeddings.size(0), -1)
+
+
+        # Initialize the model, loss function, and optimizer
+        input_size = first_batch_embeddings.shape[-1]  # MNIST images are 28x28 pixels
+        num_classes = 2  # use a variable
+        log_model = LogisticRegressionModel(input_size, num_classes)
+        criterion = nn.CrossEntropyLoss(weight=torch.tensor([.01,1], device=torch.cuda.current_device()), reduction='none')
+        optimizer = optim.SGD(log_model.parameters(), lr=0.01)
+
+        # Training loop
+        num_epochs = 5
+
+        num_batches = 5
+        will_break = True
+
+        while will_break:
+            log_model = LogisticRegressionModel(input_size, num_classes)
+            criterion = nn.CrossEntropyLoss(weight=torch.tensor([.01,1], device=torch.cuda.current_device()), reduction='none')
+            optimizer = optim.SGD(log_model.parameters(), lr=0.01)
+
+            will_break = False
+            for epoch in range(num_epochs):
+                log_model.train()
+                batch_num = 0
+                for batch in self.dataloaders['train']:
+                    if batch_num >= num_batches:
+                        will_break = True
+                    batch_num += 1
+                    device = torch.cuda.current_device()
+                    log_model.to(device)
+                    embeddings = batch['embeddings']
+                    # loss = batch['loss']
+                    class_labels = batch['class_label']
+
+                    # Flatten the images
+                    embeddings = embeddings.view(embeddings.size(0), -1)
+                    embeddings = embeddings.to(device)
+                    class_labels = class_labels.to(device)
+
+                    # Forward pass
+                    outputs = log_model(embeddings)
+
+                    # Changing torch type
+                    class_labels = class_labels.to(torch.long)
+
+                    # Calculate loss
+                    loss =  criterion(outputs, class_labels)
+                    loss_mean = torch.mean(loss)
+
+                    # Backward pass and optimization
+                    optimizer.zero_grad()
+                    loss_mean.backward()
+                    optimizer.step()
+
+                # Print training loss after each epoch
+                print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss_mean.item():.4f}')
+                gc.collect()
+                torch.cuda.empty_cache()
+
+
+                # Evaluation on the validation set
+                # self.get_performance_metrics(log_model)
+                log_model.eval()
+                with torch.no_grad():
+                    correct = 0
+                    total = 0
+                    batch_num = 0
+                    for batch in self.dataloaders['val']:
+                        if batch_num >= num_batches:
+                            break
+                        batch_num += 1
+                        embeddings = batch['embeddings']
+                        loss = batch['loss']
+                        class_labels = batch['class_label']
+                        class_labels = class_labels.to(device)
+                        class_labels = class_labels.to(torch.long)
+
+                        embeddings = embeddings.view(embeddings.size(0), -1)
+                        outputs = log_model(embeddings)
+
+                        _, predicted = torch.max(outputs, 1)
+                        total += class_labels.size(0)
+                        correct += (predicted == class_labels).sum().item()
+
+                    accuracy = correct / total
+                    print(f'Val Accuracy Epoch {epoch + 1} {num_batches} batches: {accuracy:.4f}')
+
+                    gc.collect()
+                    torch.cuda.empty_cache()
+            num_batches += 5
+
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
         
 
     def get_classifer_default(self):
         # Set random seed for reproducibility
-        # torch.manual_seed(42)
+        torch.manual_seed(42)
         # mp.set_start_method('spawn')
         count = 0
 
@@ -104,7 +251,7 @@ class FindGroups():
         input_size = first_batch_embeddings.shape[-1]  # MNIST images are 28x28 pixels
         num_classes = 2  # use a variable
         log_model = LogisticRegressionModel(input_size, num_classes)
-        criterion = nn.CrossEntropyLoss(weight=torch.tensor([.01,1], device=torch.cuda.current_device()), reduction='none')
+        criterion = nn.CrossEntropyLoss(weight=torch.tensor([.001,1], device=torch.cuda.current_device()), reduction='none')
         optimizer = optim.SGD(log_model.parameters(), lr=0.01)
 
         # Training loop
@@ -131,8 +278,8 @@ class FindGroups():
                 class_labels = class_labels.to(torch.long)
 
                 # Calculate loss
-                # print('outputs shape',outputs.shape)
-                # print('class_labels shape', class_labels.shape)
+                print('outputs shape',outputs.shape)
+                print('class_labels shape', class_labels.shape)
                 loss =  criterion(outputs, class_labels)
                 loss_mean = torch.mean(loss)
 
@@ -148,30 +295,9 @@ class FindGroups():
 
 
             # Evaluation on the validation set
-            log_model.eval()
-            with torch.no_grad():
-                correct = 0
-                total = 0
-                for batch in self.dataloaders['val']:
-                    embeddings = batch['embeddings']
-                    loss = batch['loss']
-                    class_labels = batch['class_label']
-                    class_labels = class_labels.to(device)
-                    class_labels = class_labels.to(torch.long)
-
-                    embeddings = embeddings.view(embeddings.size(0), -1)
-                    outputs = log_model(embeddings)
-
-                    _, predicted = torch.max(outputs, 1)
-                    total += class_labels.size(0)
-                    correct += (predicted == class_labels).sum().item()
-
-                accuracy = correct / total
-                print(f'Val Accuracy: {accuracy:.4f}')
-
-                gc.collect()
-                torch.cuda.empty_cache()
-
+            self.get_performance_metrics(log_model, device)
+            
+        # set group information according to classifier    
         count = 0
         for data_type in ['train', 'val']:
             # print(self.group_num, data_type)
@@ -209,13 +335,12 @@ class FindGroups():
         groups_from_classifiers_list = list()
         for idx in example_idxs:
             groups_from_classifiers_list.append(self.groups_from_classifiers[idx])
-        # print('groups from classifiers list:', groups_from_classifiers_list)
         groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
 
         # torch.save(data_to_save, "classifiers.pt")
         torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, "groups_from_classifiers_info.pt")
 
-        return log_model, accuracy
+        return log_model
 
 def parse_list(s):
     if '[' in s:
@@ -235,7 +360,7 @@ def main():
     parser.add_argument("-d",
                         "--dataset",
                         choices=dataset_attributes.keys(),
-                        default="celebA")
+                        default="CelebA")
     parser.add_argument("--model",
                         choices=model_attributes.keys(),
                         default="resnet50")
@@ -256,49 +381,26 @@ def main():
         args.target = "waterbird_complete95"
         args.confounder_name = "forest2water2"
         args.model = "resnet50"
-        # args.batch_size = 64
-        # args.n_epochs = 300
-        # args.memory = 30 if not args.memory else args.memory
-        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     elif args.dataset == "CelebA":
         args.root_dir = "./"
         args.target = "Blond_Hair"
         args.confounder_name = "Male"
-        ## args.n_epochs = 50
-        # args.model = "cnn" if args.downsample else "resnet50" #old
         args.model = "resnet50"
-        ## args.memory = 30 if not args.memory else args.memory
-        ## args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     elif args.dataset == "MultiNLI":
         args.root_dir = "./"
         args.target = "gold_label_random"
         args.confounder_name = "sentence2_has_negation"
-        # args.batch_size = 32
         args.model = "bert"
-        # args.memory = 30 if not args.memory else args.memory
-        # args.n_epochs = 5
-        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     elif args.dataset == "jigsaw":
         args.root_dir = "./jigsaw"
         args.target = "toxicity"
         args.confounder_name = "identity_any"
-#         args.lr = 1e-5 # no-bert-param: 2e-5
-#         args.weight_decay = 0.01 # no-bert-param: 0.0
-#         args.batch_size = 16 # no-bert-param: 24
-        # args.n_epochs = 3
         args.model = "bert-base-uncased"
-        # args.memory = 60 if not args.memory else args.memory
-        # args.final_epoch = 0
-        # args.metadata_csv_name = "all_data_with_identities.csv" if not args.metadata_csv_name else args.metadata_csv_name
     elif args.dataset == "ColoredMNIST":
         args.root_dir = "./"
         args.target = "target"
         args.confounder_name = "confounder"
-        # args.n_epochs = 5
         args.model = "cnn"
-        # args.batch_size = 32
-        # args.memory = 30 if not args.memory else args.memory
-        # args.metadata_csv_name = "metadata.csv" if not args.metadata_csv_name else args.metadata_csv_name
     else:
         assert False, f"{args.dataset} is not a known dataset."
 
