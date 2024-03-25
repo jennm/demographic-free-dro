@@ -186,7 +186,7 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
 
 
     embeddings = torch.cat(tuple([tail_cache[i][layer_num + 1].to(device) for i in list(tail_cache.keys())]), dim=0)
-    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': labels, 'class_label': class_labels, 'idxs': idxs}
+    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': pred, 'actual_label': labels, 'class_label': class_labels, 'idxs': idxs}
     tail_cache = dict()
     gc.collect()
     torch.cuda.empty_cache()

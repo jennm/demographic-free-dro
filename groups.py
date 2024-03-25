@@ -54,6 +54,8 @@ class FindGroups():
             return [0]
         if self.args.test_celebA:
             self.get_groups_default()
+        else:
+            self.get_groups_lr()
         
         example_idxs = list(self.groups_from_classifiers.keys())
         example_idxs.sort()
@@ -66,6 +68,127 @@ class FindGroups():
         torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, "groups_from_classifiers_info.pt")
 
         return self.group_counts
+
+    def identify_misclassified(self, model, num_batches=None):
+        with torch.no_grad():
+            cur_batch = 0
+            misclassified_idxes = set()
+            for batch in self.dataloaders['train']:
+                if num_batches is not None and cur_batch >= num_batches:
+                    break
+                cur_batch +=1
+
+                embeddings = batch['embeddings']
+                idxes = batch['idx']
+                labels = batch['actual_label']
+                outputs = model(embeddings)
+                predicted = (outputs[:, 1] > 0.5).long()
+                misclassified_indices = torch.where(predicted != labels)[0]
+                distances = torch.abs(outputs - 0.5)
+                for idx in misclassified_indices:
+                    if distances[idx, 0] < threshold:
+                        misclassified.add(idx)
+
+        return misclassified_idxes
+
+
+    # Train the model
+    def train_lr_model(self, log_model, criterion, optimizer, misclassified_indices=None, num_epochs=5):
+        log_model.train()
+        device = torch.cuda.current_device()
+        # print('device', device)
+        for epoch in range(num_epochs):
+            log_model.train()
+            for batch in self.dataloaders['train']:
+                embeddings = batch['embeddings']
+                idxs = batch['idxs']
+                labels = batch['actual_label']
+                if misclassified_indices:
+                    labels = labels.tolist()
+                    for idx in idxs:
+                        if idx in misclassified_indices:
+                            labels[i] = (labels[i] + 1) % 2
+                    labels = torch.tensor(labels, dtype=torch.long)
+                else:
+                    labels = labels.to(torch.long)
+
+                optimizer.zero_grad()
+
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                embeddings = embeddings.to(device)
+                labels = labels.to(device)
+
+                outputs = log_model(embeddings)
+                loss = criterion(outputs, labels)
+                loss = loss.mean()
+                loss.backward()
+                optimizer.step()
+                # if epoch % 100 == 0:
+                #   print(f'Loss epoch: {loss}')
+    
+    def get_groups_lr(self, k=10):
+        first_batch_embeddings = next(iter(self.dataloaders['train']))['embeddings']
+        first_batch_embeddings = first_batch_embeddings.view(first_batch_embeddings.size(0), -1)
+        num_classes = 2 # should use a variable
+
+
+        # Initialize the model, loss function, and optimizer
+        input_size = first_batch_embeddings.shape[-1] 
+        device = torch.cuda.current_device()
+        # print('device', device)
+
+        
+        model = LogisticRegressionModel(input_size, num_classes)
+        model = model.to(device)
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+
+        # Train the model
+        self.train_lr_model(model, criterion, optimizer)
+        self.get_performance_metrics(model, device)
+        # return
+
+        # visualize_model(model, X, y, colors)
+
+        for i in range(k):
+            misclassified_indices = self.identify_misclassified(model)
+            if len(misclassified_indices) == 0: return
+
+            # Define model, criterion, and optimizer
+            # does this have to be a new model?
+            model = LogisticRegressionModel(input_size, num_classes)
+            criterion = nn.CrossEntropyLoss()
+            optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+            # Train the model
+            self.train_lr_model(model, criterion, optimizer, misclassified_indices)
+            #   visualize_model(model, X, y, colors)
+            self.get_performance_metrics(model, device)
+        
+        for data_type in ['train', 'val']:
+            # print(self.group_num, data_type)
+            for batch in self.dataloaders[data_type]:
+                embeddings = batch['embeddings']
+                idxs = batch['idxs']
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                outputs = model(embeddings)
+                _, predicted = torch.max(outputs, 1)
+                for i in range(len(idxs)):
+                    idx = idxs[i]
+                    if predicted[i].item() == 1:
+                        self.groups_from_classifiers[idx].append(self.group_num)
+                        count += 1
+                    else:
+                        self.groups_from_classifiers[idx].append(-1)
+            gc.collect()
+            torch.cuda.empty_cache()
+        self.group_counts.append(count)
+        self.group_num += 1
+
+        gc.collect()
+        torch.cuda.empty_cache()
+    
 
     def get_groups_default(self): # to be changed to get_group code
         self.get_classifer_default()
@@ -151,7 +274,7 @@ class FindGroups():
                         will_break = True
                     batch_num += 1
                     device = torch.cuda.current_device()
-                    log_model.to(device)
+                    log_model = log_model.to(device)
                     embeddings = batch['embeddings']
                     # loss = batch['loss']
                     class_labels = batch['class_label']
@@ -415,7 +538,9 @@ def main():
     # print('Accuracy:', acc)
     
 
-    
+# def test():
+#     find_groups = FindGroups(None)
+#     find_groups.
 
 
 
