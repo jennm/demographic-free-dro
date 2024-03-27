@@ -69,7 +69,8 @@ class FindGroups():
 
         return self.group_counts
 
-    def identify_misclassified(self, model, num_batches=None):
+    def identify_misclassified(self, model, num_batches=None, threshold=1.5):
+        device = torch.cuda.current_device()
         with torch.no_grad():
             cur_batch = 0
             misclassified_idxes = set()
@@ -79,15 +80,17 @@ class FindGroups():
                 cur_batch +=1
 
                 embeddings = batch['embeddings']
-                idxes = batch['idx']
+                idxes = batch['idxs']
                 labels = batch['actual_label']
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                embeddings = embeddings.to(device)
                 outputs = model(embeddings)
                 predicted = (outputs[:, 1] > 0.5).long()
                 misclassified_indices = torch.where(predicted != labels)[0]
                 distances = torch.abs(outputs - 0.5)
                 for idx in misclassified_indices:
                     if distances[idx, 0] < threshold:
-                        misclassified.add(idx)
+                        misclassified_idxes.add(idx)
 
         return misclassified_idxes
 
@@ -117,6 +120,7 @@ class FindGroups():
                 embeddings = embeddings.view(embeddings.size(0), -1)
                 embeddings = embeddings.to(device)
                 labels = labels.to(device)
+                log_model = log_model.to(device)
 
                 outputs = log_model(embeddings)
                 loss = criterion(outputs, labels)
@@ -158,6 +162,7 @@ class FindGroups():
             # Define model, criterion, and optimizer
             # does this have to be a new model?
             model = LogisticRegressionModel(input_size, num_classes)
+            model = model.to(device)
             criterion = nn.CrossEntropyLoss()
             optimizer = optim.SGD(model.parameters(), lr=0.01)
 
@@ -166,12 +171,14 @@ class FindGroups():
             #   visualize_model(model, X, y, colors)
             self.get_performance_metrics(model, device)
         
+        count = 0
         for data_type in ['train', 'val']:
             # print(self.group_num, data_type)
             for batch in self.dataloaders[data_type]:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
                 embeddings = embeddings.view(embeddings.size(0), -1)
+                embeddings = embeddings.to(device)
                 outputs = model(embeddings)
                 _, predicted = torch.max(outputs, 1)
                 for i in range(len(idxs)):
@@ -216,6 +223,7 @@ class FindGroups():
                 all_zeros = torch.zeros(class_labels.size(0), device=device)
 
                 embeddings = embeddings.view(embeddings.size(0), -1)
+                embeddings = embeddings.to(device)
                 outputs = log_model(embeddings)
 
                 _, predicted = torch.max(outputs, 1)
