@@ -223,18 +223,19 @@ def get_model_and_dataset_mnist(args, layer_num):#, target_name=3):
                 target_name=args.target, 
                 confounder_names=args.confounder_name, 
                 model_type=args.model, 
-                test_mnist=args.test_celebA
+                test_mnist=True
             )
     datasets = {'train': train_dataset, 'val': val_dataset}
-    dataloaders = create_dataloader(model, datasets, shared_dl_args, layer_num)
+    dataloaders = create_dataloader(model, datasets, shared_dl_args, layer_num, class_labels=args.test_celebA)
     return dataloaders, model, dataset, shared_dl_args, num_classes
 
-def collate_func(batch, pretrained_model, criterion, layer_num):
+def collate_func(batch, pretrained_model, criterion, layer_num, return_class_labels=False):
     global tail_cache
     inputs = torch.stack([item['image'] for item in batch])
     labels = torch.stack([item['label'] for item in batch])
     # print([item['class_labels'] for item in batch])exit()
-    class_labels = torch.tensor([item['class_labels'] for item in batch])
+    if return_class_labels:
+        class_labels = torch.tensor([item['class_labels'] for item in batch])
     idxs = [item['idx'] for item in batch]
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -251,22 +252,24 @@ def collate_func(batch, pretrained_model, criterion, layer_num):
 
 
     embeddings = torch.cat(tuple([tail_cache[i][layer_num + 1].to(device) for i in list(tail_cache.keys())]), dim=0)
-    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': labels, 'class_label': class_labels, 'idxs': idxs}
+    data = {'embeddings': embeddings, 'loss': loss, 'predicted_label': pred, 'actual_label': labels, 'idxs': idxs}
+    if return_class_labels:
+        data['class_label'] = class_labels
     tail_cache = dict()
     gc.collect()
     torch.cuda.empty_cache()
 
     return data
 
-def create_dataloader(model, datasets, shared_dl_args, layer_num=1, criterion=nn.CrossEntropyLoss(reduction='none')):
+def create_dataloader(model, datasets, shared_dl_args, layer_num=1, criterion=nn.CrossEntropyLoss(reduction='none'), class_labels=False):
     if type(datasets) is dict:
         dataloaders = dict()
         for dataset_type in datasets:
-                collate_fn = partial(collate_func, pretrained_model=model, criterion=criterion, layer_num=layer_num)
+                collate_fn = partial(collate_func, pretrained_model=model, criterion=criterion, layer_num=layer_num, return_class_labels=class_labels)
                 dataloaders[dataset_type] = DataLoader(datasets[dataset_type], **shared_dl_args, collate_fn=collate_fn)
     else:
         # Create a DataLoader
-        collate_fn = partial(collate_func, pretrained_model=model, criterion=criterion, layer_num=layer_num)
+        collate_fn = partial(collate_func, pretrained_model=model, criterion=criterion, layer_num=layer_num, return_class_labels=class_labels)
         dataloaders = DataLoader(datasets, **shared_dl_args, collate_fn=collate_fn)
 
     return dataloaders

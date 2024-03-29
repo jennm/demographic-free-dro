@@ -216,6 +216,47 @@ class FindGroups():
             for batch in self.dataloaders['val']:
                 embeddings = batch['embeddings']
                 loss = batch['loss']
+                erm_predicted_labels = batch['predicted_label']
+                actual_labels = batch['actual_label']
+                # class_labels = batch['class_label']
+                # class_labels = class_labels.to(device)
+                # class_labels = class_labels.to(torch.long)
+                all_ones = torch.ones(actual_labels.size(0), device=device)
+                all_zeros = torch.zeros(actual_labels.size(0), device=device)
+
+                embeddings = embeddings.view(embeddings.size(0), -1)
+                embeddings = embeddings.to(device)
+                outputs = log_model(embeddings)
+
+                _, predicted = torch.max(outputs, 1)
+                tp += ((predicted == 1) & (erm_predicted_labels != actual_labels) & (predicted == all_ones)).sum().item()
+                fp += ((predicted != 1) & (erm_predicted_labels != actual_labels) & (predicted == all_ones)).sum().item()
+                tn += ((predicted == 0) & (erm_predicted_labels == actual_labels) & (predicted == all_zeros)).sum().item()
+                fn += ((predicted != 0) & (erm_predicted_labels == actual_labels) & (predicted == all_zeros)).sum().item()
+                total += predicted.size(0)
+                correct += tp + tn
+
+            accuracy = correct / total
+            print(tp, fp, tn, fn)
+            print(f'Val Accuracy: {accuracy:.4f}')
+            ppv = tp/(max(1, tp+fp))
+            print(f'TPR: {tp/(max(1, tp+fn))}\tFPR: {fp/(max(1, tn+fp))}\tTNR: {tn/(max(1, tn+fp))}\tFNR: {fn/(max(1, tp+fn))}\tPPV: {ppv}\t1 - PPV: {1 - ppv}')
+
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    def get_performance_metrics_group_labels(self, log_model, device):
+        log_model.eval()
+        tp = 0
+        fp = 0
+        tn = 0
+        fn = 0
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for batch in self.dataloaders['val']:
+                embeddings = batch['embeddings']
+                loss = batch['loss']
                 class_labels = batch['class_label']
                 class_labels = class_labels.to(device)
                 class_labels = class_labels.to(torch.long)
