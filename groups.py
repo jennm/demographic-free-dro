@@ -57,14 +57,22 @@ class FindGroups():
         count = 0
 
     def find_groups(self, exp=False):
+        first_batch_embeddings = next(iter(self.dataloaders['train']))['embeddings']
+        first_batch_embeddings = first_batch_embeddings.view(first_batch_embeddings.size(0), -1)
+
         if exp:
             self.exp_num_data_points_classifer_default()
             return [0]
         if self.args.test_celebA:
             self.get_groups_default()
         else:
-            self.get_groups_lr()
+            self.get_groups_lr(input_size=first_batch_embeddings.shape[-1])
         
+        self.save_group_info() # this line will be removed after refactoring
+
+        return self.group_counts
+
+    def save_group_info(self):
         example_idxs = list(self.groups_from_classifiers.keys())
         example_idxs.sort()
         groups_from_classifiers_list = list()
@@ -83,9 +91,8 @@ class FindGroups():
         # torch.save(data_to_save, "classifiers.pt")
         torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, self.args.group_info_path) #"groups_from_classifiers_info.pt")
 
-        return self.group_counts
 
-    def identify_misclassified(self, model, num_batches=None, threshold=1.5):
+    def identify_misclassified(self, model, old_misclassified_indices=None, num_batches=None, threshold=1.5):
         device = torch.cuda.current_device()
         with torch.no_grad():
             cur_batch = 0
@@ -96,12 +103,23 @@ class FindGroups():
                 cur_batch +=1
 
                 embeddings = batch['embeddings']
-                idxes = batch['idxs']
+                idxs = batch['idxs']
                 labels = batch['actual_label']
                 embeddings = embeddings.view(embeddings.size(0), -1)
                 embeddings = embeddings.to(device)
                 outputs = model(embeddings)
                 predicted = (outputs[:, 1] > 0.5).long()
+                if old_misclassified_indices:
+                    labels = labels.tolist()
+                    # print('miscalssified_indices')
+                    for i in range(len(idxs)):
+                        idx = idxs[i]
+                        if idx in old_misclassified_indices:
+                            labels[i] = (labels[i] + 1) % 2
+                            print('diff')
+                    labels = torch.tensor(labels, dtype=torch.long)
+                predicted = predicted.to(device)
+                labels = labels.to(device)
                 misclassified_indices = torch.where(predicted != labels)[0]
                 distances = torch.abs(outputs - 0.5)
                 for idx in misclassified_indices:
@@ -122,14 +140,18 @@ class FindGroups():
                 idxs = batch['idxs']
                 labels = batch['actual_label']
                 if misclassified_indices:
+                    # print(misclassified_indices)
                     labels = labels.tolist()
-                    for idx in idxs:
+                    for i in range(len(idxs)):
+                        idx = idxs[i]
                         if idx in misclassified_indices:
+                            # print('diff')
                             labels[i] = (labels[i] + 1) % 2
                     labels = torch.tensor(labels, dtype=torch.long)
                 else:
                     labels = labels.to(torch.long)
 
+                criterion.weight = torch.tensor([(labels == 0).sum() / labels.shape[0], (labels == 1).sum() / labels.shape[0]], device=device)
                 optimizer.zero_grad()
 
                 embeddings = embeddings.view(embeddings.size(0), -1)
@@ -145,14 +167,13 @@ class FindGroups():
                 # if epoch % 100 == 0:
                 #   print(f'Loss epoch: {loss}')
     
-    def get_groups_lr(self, k=10):
-        first_batch_embeddings = next(iter(self.dataloaders['train']))['embeddings']
-        first_batch_embeddings = first_batch_embeddings.view(first_batch_embeddings.size(0), -1)
-        num_classes = 2 # should use a variable
+    def get_groups_lr(self, input_size, k=10, num_classes=2):
+        # first_batch_embeddings = next(iter(self.dataloaders['train']))['embeddings']
+        # first_batch_embeddings = first_batch_embeddings.view(first_batch_embeddings.size(0), -1)
 
 
         # Initialize the model, loss function, and optimizer
-        input_size = first_batch_embeddings.shape[-1] 
+        # input_size = first_batch_embeddings.shape[-1] 
         device = torch.cuda.current_device()
 
         
@@ -168,9 +189,10 @@ class FindGroups():
         # return
 
         # visualize_model(model, X, y, colors)
-
+        misclassified_indices = None
         for i in range(k):
-            misclassified_indices = self.identify_misclassified(model)
+            misclassified_indices = self.identify_misclassified(model, misclassified_indices)
+            print(f'misclassified length: {len(misclassified_indices)}')
             if len(misclassified_indices) == 0: return
 
             # Define model, criterion, and optimizer
@@ -208,6 +230,8 @@ class FindGroups():
 
         gc.collect()
         torch.cuda.empty_cache()
+
+            # self.remove_points_from_canidacy()
     
 
     def get_groups_default(self): # to be changed to get_group code
