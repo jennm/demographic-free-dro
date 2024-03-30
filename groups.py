@@ -17,8 +17,17 @@ from get_mnist_model_embeddings import get_model_and_dataset_mnist
 class FindGroups():
 
     def __init__(self, args):
+        if args.groups_exist:
+            old_group_info = torch.load(args.group_info_path)
+            old_group_counts = old_group_info['group_counts'].tolist()
+            self.group_counts = old_group_counts
+            self.group_num = len(old_group_counts)
+            self.old_group_array = old_group_info['group_array']
+        else:
+            self.group_counts = list()
+            self.group_num = 1
+        
         self.groups_from_classifiers = dict()
-        self.group_counts = list()
         self.args = args
         
         if type(self.args.layer_nums) is list:
@@ -38,14 +47,13 @@ class FindGroups():
         count = 0
         for data_type in list(self.dataloaders.keys()):
             for batch in self.dataloaders[data_type]:
-                # print('embedding shape:', batch['embeddings'].shape)
                 idxs = batch['idxs']
                 for idx in idxs:
                     self.groups_from_classifiers[idx] = [0]
                     count += 1
         
-        self.group_num = 1
-        self.group_counts.append(count)
+        if not args.groups_exist:
+            self.group_counts.append(count)
         count = 0
 
     def find_groups(self, exp=False):
@@ -60,12 +68,20 @@ class FindGroups():
         example_idxs = list(self.groups_from_classifiers.keys())
         example_idxs.sort()
         groups_from_classifiers_list = list()
+        if self.args.groups_exist:
+            start_index = 1
+        else:
+            start_index = 0
+
         for idx in example_idxs:
-            groups_from_classifiers_list.append(self.groups_from_classifiers[idx])
+            groups_from_classifiers_list.append(self.groups_from_classifiers[idx][start_index:])
         groups_from_classifiers_tensor = torch.tensor(groups_from_classifiers_list)
 
+        if self.args.groups_exist:
+            groups_from_classifiers_tensor = torch.concat([self.old_group_array, groups_from_classifiers_tensor], dim=1)
+
         # torch.save(data_to_save, "classifiers.pt")
-        torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, "groups_from_classifiers_info.pt")
+        torch.save({'group_array': groups_from_classifiers_tensor, 'group_counts': torch.tensor(self.group_counts)}, self.args.group_info_path) #"groups_from_classifiers_info.pt")
 
         return self.group_counts
 
@@ -99,7 +115,6 @@ class FindGroups():
     def train_lr_model(self, log_model, criterion, optimizer, misclassified_indices=None, num_epochs=5):
         log_model.train()
         device = torch.cuda.current_device()
-        # print('device', device)
         for epoch in range(num_epochs):
             log_model.train()
             for batch in self.dataloaders['train']:
@@ -139,7 +154,6 @@ class FindGroups():
         # Initialize the model, loss function, and optimizer
         input_size = first_batch_embeddings.shape[-1] 
         device = torch.cuda.current_device()
-        # print('device', device)
 
         
         model = LogisticRegressionModel(input_size, num_classes)
@@ -173,7 +187,6 @@ class FindGroups():
         
         count = 0
         for data_type in ['train', 'val']:
-            # print(self.group_num, data_type)
             for batch in self.dataloaders[data_type]:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
@@ -218,9 +231,6 @@ class FindGroups():
                 loss = batch['loss']
                 erm_predicted_labels = batch['predicted_label']
                 actual_labels = batch['actual_label']
-                # class_labels = batch['class_label']
-                # class_labels = class_labels.to(device)
-                # class_labels = class_labels.to(torch.long)
                 all_ones = torch.ones(actual_labels.size(0), device=device)
                 all_zeros = torch.zeros(actual_labels.size(0), device=device)
 
@@ -472,7 +482,6 @@ class FindGroups():
         # set group information according to classifier    
         count = 0
         for data_type in ['train', 'val']:
-            # print(self.group_num, data_type)
             for batch in self.dataloaders[data_type]:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
@@ -546,6 +555,8 @@ def main():
     parser.add_argument('--layer_nums', type=parse_list, help='Input list of integers', required=True)
     parser.add_argument("--target_name")
     parser.add_argument("--confounder_name")
+    parser.add_argument("--groups_exist", action="store_true", default=False)
+    parser.add_argument("--group_info_path")
     args = parser.parse_args()
 
     if args.dataset == "CUB":
