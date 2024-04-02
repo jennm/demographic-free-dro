@@ -19,6 +19,7 @@ class Subset(torch.utils.data.Dataset):
     def __init__(self, dataset, indices):
         self.dataset = dataset
         self.indices = indices
+        print(indices)
 
         self.group_array = self.get_group_array(re_evaluate=True)
         self.label_array = self.get_label_array(re_evaluate=True)
@@ -40,6 +41,14 @@ class Subset(torch.utils.data.Dataset):
         """Return an array [g_x1, g_x2, ...]"""
         # setting re_evaluate=False helps us over-write the group array if necessary (2-group DRO)
         if re_evaluate:
+            # print(self.indices)
+            # print('idx len', len(self.indices))
+            # print(self.dataset.get_group_array())
+            old_group_array = self.dataset.get_group_array()
+            if self.indices[-1] >= len(old_group_array):
+                # x = [ i - x[0]for i in range(10)]
+                self.indices = [index - self.indices[0] for index in self.indices]
+                # self .indices  
             group_array = self.dataset.get_group_array()[self.indices]        
             assert len(group_array) == len(self)
             return group_array
