@@ -20,7 +20,8 @@ class DRODataset(Dataset):
 
         y_array = self.get_label_array()
 
-        self._group_array = torch.LongTensor(group_array)
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self._group_array = torch.tensor(group_array.clone().detach(), dtype=torch.long, device=device)
 
         self._y_array = torch.LongTensor(y_array)
         
