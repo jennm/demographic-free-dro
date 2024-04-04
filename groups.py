@@ -94,6 +94,7 @@ class FindGroups():
 
     def identify_misclassified(self, model, old_misclassified_indices=None, num_batches=None, threshold=1.5):
         device = torch.cuda.current_device()
+        model.eval()
         with torch.no_grad():
             cur_batch = 0
             misclassified_idxes = set()
@@ -129,9 +130,9 @@ class FindGroups():
 
     # Train the model
     def train_lr_model(self, log_model, criterion, optimizer, misclassified_indices=None, num_epochs=5):
-        log_model.train()
         device = torch.cuda.current_device()
         for epoch in range(num_epochs):
+            log_model.train()
             for batch in self.dataloaders['train']:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
