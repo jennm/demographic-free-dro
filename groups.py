@@ -111,12 +111,10 @@ class FindGroups():
                 predicted = (outputs[:, 1] > 0.5).long()
                 if old_misclassified_indices:
                     labels = labels.tolist()
-                    # print('miscalssified_indices')
                     for i in range(len(idxs)):
                         idx = idxs[i]
                         if idx in old_misclassified_indices:
                             labels[i] = (labels[i] + 1) % 2
-                            print('diff')
                     labels = torch.tensor(labels, dtype=torch.long)
                 predicted = predicted.to(device)
                 labels = labels.to(device)
@@ -134,24 +132,21 @@ class FindGroups():
         log_model.train()
         device = torch.cuda.current_device()
         for epoch in range(num_epochs):
-            log_model.train()
             for batch in self.dataloaders['train']:
                 embeddings = batch['embeddings']
                 idxs = batch['idxs']
                 labels = batch['actual_label']
                 if misclassified_indices:
-                    # print(misclassified_indices)
                     labels = labels.tolist()
                     for i in range(len(idxs)):
                         idx = idxs[i]
                         if idx in misclassified_indices:
-                            # print('diff')
                             labels[i] = (labels[i] + 1) % 2
                     labels = torch.tensor(labels, dtype=torch.long)
                 else:
                     labels = labels.to(torch.long)
 
-                criterion.weight = torch.tensor([(labels == 0).sum() / labels.shape[0], (labels == 1).sum() / labels.shape[0]], device=device)
+                # criterion.weight = torch.tensor([(labels == 0).sum() / labels.shape[0], (labels == 1).sum() / labels.shape[0]], device=device)
                 optimizer.zero_grad()
 
                 embeddings = embeddings.view(embeddings.size(0), -1)
@@ -164,6 +159,9 @@ class FindGroups():
                 loss = loss.mean()
                 loss.backward()
                 optimizer.step()
+            print(f'loss {epoch}: {loss}')
+
+            misclassified_indices = self.identify_misclassified(log_model, misclassified_indices)
                 # if epoch % 100 == 0:
                 #   print(f'Loss epoch: {loss}')
     
@@ -180,6 +178,7 @@ class FindGroups():
         model = LogisticRegressionModel(input_size, num_classes)
         model = model.to(device)
         criterion = nn.CrossEntropyLoss()
+        # criterion = nn.CrossEntropyLoss(weight=torch.tensor([1, 10], device=device, dtype=torch.float))
         optimizer = optim.SGD(model.parameters(), lr=0.01)
 
 
@@ -192,15 +191,7 @@ class FindGroups():
         misclassified_indices = None
         for i in range(k):
             misclassified_indices = self.identify_misclassified(model, misclassified_indices)
-            print(f'misclassified length: {len(misclassified_indices)}')
             if len(misclassified_indices) == 0: return
-
-            # Define model, criterion, and optimizer
-            # does this have to be a new model?
-            model = LogisticRegressionModel(input_size, num_classes)
-            model = model.to(device)
-            criterion = nn.CrossEntropyLoss()
-            optimizer = optim.SGD(model.parameters(), lr=0.01)
 
             # Train the model
             self.train_lr_model(model, criterion, optimizer, misclassified_indices)
@@ -263,15 +254,15 @@ class FindGroups():
                 outputs = log_model(embeddings)
 
                 _, predicted = torch.max(outputs, 1)
-                tp += ((predicted == 1) & (erm_predicted_labels != actual_labels) & (predicted == all_ones)).sum().item()
-                fp += ((predicted != 1) & (erm_predicted_labels != actual_labels) & (predicted == all_ones)).sum().item()
-                tn += ((predicted == 0) & (erm_predicted_labels == actual_labels) & (predicted == all_zeros)).sum().item()
-                fn += ((predicted != 0) & (erm_predicted_labels == actual_labels) & (predicted == all_zeros)).sum().item()
-                total += predicted.size(0)
+                tp += ((erm_predicted_labels != actual_labels) & (predicted == all_ones)).sum().item()
+                fp += ((erm_predicted_labels == actual_labels) & (predicted == all_ones)).sum().item()
+                tn += ((erm_predicted_labels != actual_labels) & (predicted == all_zeros)).sum().item()
+                fn += ((erm_predicted_labels == actual_labels) & (predicted == all_zeros)).sum().item()
+                total += actual_labels.size(0)
                 correct += tp + tn
 
             accuracy = correct / total
-            print(tp, fp, tn, fn)
+            print(tp, fp, tn, fn, total)
             print(f'Val Accuracy: {accuracy:.4f}')
             ppv = tp/(max(1, tp+fp))
             print(f'TPR: {tp/(max(1, tp+fn))}\tFPR: {fp/(max(1, tn+fp))}\tTNR: {tn/(max(1, tn+fp))}\tFNR: {fn/(max(1, tp+fn))}\tPPV: {ppv}\t1 - PPV: {1 - ppv}')
@@ -310,7 +301,7 @@ class FindGroups():
                 correct += (predicted == class_labels).sum().item()
 
             accuracy = correct / total
-            print(tp, fp, tn, fn)
+            print(tp, fp, tn, fn, total)
             print(f'Val Accuracy: {accuracy:.4f}')
             ppv = tp/(max(1, tp+fp))
             print(f'TPR: {tp/(max(1, tp+fn))}\tFPR: {fp/(max(1, tn+fp))}\tTNR: {tn/(max(1, tn+fp))}\tFNR: {fn/(max(1, tp+fn))}\tPPV: {ppv}\t1 - PPV: {1 - ppv}')
@@ -484,8 +475,6 @@ class FindGroups():
                 class_labels = class_labels.to(torch.long)
 
                 # Calculate loss
-                print('outputs shape',outputs.shape)
-                print('class_labels shape', class_labels.shape)
                 loss =  criterion(outputs, class_labels)
                 loss_mean = torch.mean(loss)
 

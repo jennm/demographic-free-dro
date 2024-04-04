@@ -90,15 +90,19 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
         splits = ["test"]
     subsets = full_dataset.get_splits(splits, train_frac=args.fraction)
     if args.classifier_groups:
-        dro_subsets = [
-            DROClassifiersDataset(
-                subsets[split],
-                process_item_fn=None,
-                n_classes=full_dataset.n_classes,
-                group_str_fn=full_dataset.group_str,
-                group_info_path=args.group_info_path
-            ) for split in splits[0:2]
-        ]
+        if train:
+            dro_subsets = [
+                DROClassifiersDataset(
+                    subsets[split],
+                    process_item_fn=None,
+                    n_classes=full_dataset.n_classes,
+                    group_str_fn=full_dataset.group_str,
+                    group_info_path=args.group_info_path
+                ) for split in splits[0:2]
+            ]
+        else:
+            dro_subsets = list()
+
         dro_subsets.append(
             DRODataset(
                 subsets["test"],
@@ -108,6 +112,9 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
                 group_str_fn=full_dataset.group_str,
             )
         )
+        # for subset in dro_subsets:
+        #     print(subset.dataset.indices[0:10])
+        #     print(subset.dataset.group_array)
     else:
         dro_subsets = [
             DRODataset(

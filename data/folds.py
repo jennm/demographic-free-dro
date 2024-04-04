@@ -41,14 +41,9 @@ class Subset(torch.utils.data.Dataset):
         """Return an array [g_x1, g_x2, ...]"""
         # setting re_evaluate=False helps us over-write the group array if necessary (2-group DRO)
         if re_evaluate:
-            # print(self.indices)
-            # print('idx len', len(self.indices))
-            # print(self.dataset.get_group_array())
             old_group_array = self.dataset.get_group_array()
             if self.indices[-1] >= len(old_group_array):
-                # x = [ i - x[0]for i in range(10)]
                 self.indices = [index - self.indices[0] for index in self.indices]
-                # self .indices  
             group_array = self.dataset.get_group_array()[self.indices]        
             assert len(group_array) == len(self)
             return group_array
@@ -81,7 +76,6 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
                 group = torch.tensor(group)
             group_array.append(group)
         group_array = torch.concat(group_array)
-        # print('concat', group_array.shape)
         return group_array
 
     def get_label_array(self):

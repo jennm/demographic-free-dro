@@ -32,6 +32,7 @@ def get_subset(
 
     sz = int(math.ceil(len(indices) * fraction))
     indices = indices[:sz]
+    # print('indices', indices[0], indices[-1])
     split = Subset(dataset, indices)
         
     # Wrap in DRODataset Objects
