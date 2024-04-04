@@ -76,3 +76,23 @@ group 2 acc val   acc (early stop at epoch 2): 95.9
 group 2 acc test  acc (early stop at epoch 2): 95.2
 group 3 acc val   acc (early stop at epoch 2): 93.6
 group 3 acc test  acc (early stop at epoch 2): 92.9
+
+Our Algorithm:
+`python generate_downstream.py --exp_name ColoredMNIST_TEST --dataset ColoredMNIST --method ERM --batch_size 32`
+`python run_expt.py -s confounder -d ColoredMNIST -t target -c confounder --batch_size 32 --root_dir ./ --n_epochs 5 --aug_col None --log_dir results/ColoredMNIST/ColoredMNIST_TEST/ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/model_outputs --metadata_path results/ColoredMNIST/ColoredMNIST_TEST/metadata_aug.csv --lr 0.001 --weight_decay 0.0001 --up_weight 0 --metadata_csv_name metadata.csv --model cnn --use_bert_params 0 --loss_type group_dro --classifier_groups True --group_info_path groups_from_classifiers_info.pt`
+`python run_expt.py -s confounder -d ColoredMNIST -t target -c confounder --batch_size 32 --root_dir ./ --n_epochs 5 --aug_col None --log_dir results/ColoredMNIST/ColoredMNIST_TEST/ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/model_outputs --metadata_path results/ColoredMNIST/ColoredMNIST_TEST/metadata_aug.csv --lr 0.001 --weight_decay 0.0001 --up_weight 0 --metadata_csv_name metadata.csv --model cnn --use_bert_params 0 --loss_type group_dro --classifier_groups True --group_info_path groups_from_classifiers_info.pt`
+`python analysis.py --exp_name ColoredMNIST_TEST --dataset ColoredMNIST --exp_substring ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001`
+
+Results:
+Val Robust Worst Group val   acc (early stop at epoch 4): 85.8
+Val Robust Worst Group test  acc (early stop at epoch 4): 96.4
+Val Average Acc val   acc (early stop at epoch 4): 85.9
+Val Average Acc test  acc (early stop at epoch 4): 96.5
+group 0 acc val   acc (early stop at epoch 4): 85.9
+group 0 acc test  acc (early stop at epoch 4): 96.4
+group 1 acc val   acc (early stop at epoch 4): 85.9
+group 1 acc test  acc (early stop at epoch 4): 96.5
+group 2 acc val   acc (early stop at epoch 4): 85.9
+group 2 acc test  acc (early stop at epoch 4): 96.5
+group 3 acc val   acc (early stop at epoch 4): 85.8
+group 3 acc test  acc (early stop at epoch 4): 96.5
