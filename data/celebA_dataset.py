@@ -22,6 +22,7 @@ class CelebADataset(ConfounderDataset):
         model_type,
         augment_data,
         metadata_csv_name="metadata.csv",
+        classifier_group_path=''
     ):
         self.root_dir = os.path.join(root_dir, "celebA") #root_dir
         self.target_name = target_name
@@ -68,9 +69,15 @@ class CelebADataset(ConfounderDataset):
         # for each class, for each confounding variable, the variable can either co-occur or not
         self.n_groups = self.n_classes * pow(2, len(self.confounder_idx))
         # for each target value, multiply by half the number of groups; add the "compressed" confounders value
+
         self.group_array = (self.y_array * (self.n_groups / 2) +
                             self.confounder_array).astype("int")
-
+        
+        if classifier_group_path:
+            group_info = torch.load(group_info_path)
+            self.classifier_group_array = group_info['group_array']
+            self.classifier_n_groups = self.classifier_group_array.shape[1]        
+        
         # Read in train/val/test splits
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name))
@@ -107,9 +114,6 @@ class CelebADataset(ConfounderDataset):
             _type_: _description_
         """
         return self.attr_names.get_loc(attr_name)
-    
-    def update_group_array(self, group_array):
-        self.group_array = group_array
 
     def update_up_weight_array(self, new_up_weight_array):
         self.up_weight_array = new_up_weight_array

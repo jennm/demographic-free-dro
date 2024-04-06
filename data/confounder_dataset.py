@@ -20,8 +20,18 @@ class ConfounderDataset(Dataset):
     ):
         raise NotImplementedError
 
-    def get_group_array(self):
-        return self.group_array
+    # def update_LR_target(self, indices, new_values):
+    #     if not hasattr(self, 'LR_targets'):
+    #         self.LR_targets = []  
+    #     self.LR_targets[indices] = new_values
+
+    def get_group_array(self, use_classifier_groups=False):
+        if use_classifier_groups: return self.classifier_group_array
+        else: return self.group_array
+
+    def get_n_groups(self, use_classifier_groups=False):
+        if use_classifier_groups: return self.classifier_n_groups
+        else: return self.n_groups
 
     def get_label_array(self):
         return self.y_array
@@ -34,7 +44,14 @@ class ConfounderDataset(Dataset):
 
     def __getitem__(self, idx):
         y = self.y_array[idx]
-        g = self.group_array[idx]
+        g = self.get_group_array()[idx]
+
+        classifier_g = -1
+        if hasattr(self, 'classifier_group_array'):
+            classifier_group_array = self.get_group_array(use_classifier_groups=True)
+            if idx < len(classifier_group_array):
+                classifier_g = classifier_group_array[idx]
+
         up_weight = self.up_weight_array[idx]
 
         if model_attributes[self.model_type]["feature_type"] == "precomputed":
@@ -43,6 +60,7 @@ class ConfounderDataset(Dataset):
             img_filename = os.path.join(self.data_dir,
                                         self.filename_array[idx])
             img = Image.open(img_filename).convert("RGB")
+
             # Figure out split and transform accordingly
             if self.split_array[idx] == self.split_dict[
                     "train"] and self.train_transform:
@@ -51,15 +69,16 @@ class ConfounderDataset(Dataset):
                   in [self.split_dict["val"], self.split_dict["test"]]
                   and self.eval_transform):
                 img = self.eval_transform(img)
+                
             # Flatten if needed
             if model_attributes[self.model_type]["flatten"]:
                 assert img.dim() == 3
                 img = img.view(-1)
             x = img
 
-        return x, y, g, up_weight, idx
+        return x, y, g, up_weight, idx, classifier_g
 
-    def get_splits(self, splits, train_frac=1.0):
+    def get_splits(self, splits, train_frac=1.0, use_classifier_groups=False):
         subsets = {}
         for split in splits:
             assert split in ("train", "val",
@@ -72,10 +91,17 @@ class ConfounderDataset(Dataset):
                 num_to_retain = int(np.round(float(len(indices)) * train_frac))
                 indices = np.sort(
                     np.random.permutation(indices)[:num_to_retain])
-            subsets[split] = Subset(self, indices)
+            
+            subsets[split] = Subset(self, indices, (use_classifier_groups and split != 'test'))
+            # NOTE: the test set should NEVER use the classifier groups
+
         return subsets
 
-    def group_str(self, group_idx):
+    def group_str(self, group_idx, use_classifier_groups=False): # TODO: Check this
+        if use_classifier_groups:
+            group_name = f'{group_idx} / {self.get_n_groups(use_classifier_groups)}'
+            return group_name
+
         y = group_idx // (self.n_groups / self.n_classes)
         c = group_idx % (self.n_groups // self.n_classes)
 
@@ -83,4 +109,5 @@ class ConfounderDataset(Dataset):
         bin_str = format(int(c), f"0{self.n_confounders}b")[::-1]
         for attr_idx, attr_name in enumerate(self.confounder_names):
             group_name += f", {attr_name} = {bin_str[attr_idx]}"
+            
         return group_name

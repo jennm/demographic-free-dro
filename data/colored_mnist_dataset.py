@@ -20,7 +20,8 @@ class ColoredMNISTDataset(ConfounderDataset):
                  confounder_names,
                  model_type,
                  augment_data,
-                 metadata_csv_name="metadata.csv"):
+                 metadata_csv_name="metadata.csv",
+                 classifier_group_path=''):
         
         self.root_dir = os.path.join(root_dir, "coloredMNIST")
         self.target_name = target_name # new class 3
@@ -57,7 +58,12 @@ class ColoredMNISTDataset(ConfounderDataset):
         self.n_groups = self.n_classes * pow(2, len(self.confounder_idx))
         self.group_array = (self.y_array * (self.n_groups / 2)
                             + self.confounder_array).astype("int")
-        
+
+        if classifier_group_path:
+            group_info = torch.load('groups_from_classifiers_info.pt')
+            self.classifier_group_array = group_info['group_array'].numpy()
+            self.classifier_n_groups = self.classifier_group_array.shape[1]
+
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)
         )
@@ -87,9 +93,6 @@ class ColoredMNISTDataset(ConfounderDataset):
 
     def attr_idx(self, attr_name):
         return self.attr_names.get_loc(attr_name)
-    
-    def update_group_array(self, group_array):
-        self.group_array = group_array
 
     def update_up_weight_array(self, new_up_weight_array):
         self.up_weight_array = new_up_weight_array

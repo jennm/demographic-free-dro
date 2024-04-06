@@ -9,10 +9,11 @@ from data.celebA_dataset import CelebADataset
 from data.colored_mnist_dataset import ColoredMNISTDataset
 from data.colored_mnist_hard_dataset import ColoredMNIST_HARD_Dataset
 from data.cub_dataset import CUBDataset
-from data.dro_classifiers_dataset import DROClassifiersDataset
 from data.dro_dataset import DRODataset
 from data.multinli_dataset import MultiNLIDataset
 from data.jigsaw_dataset import JigsawDataset
+
+from functools import partial
 
 ########################
 ####### SETTINGS #######
@@ -40,9 +41,6 @@ confounder_settings = {
 }
 
 
-
-
-
 ########################
 ### DATA PREPARATION ###
 ########################
@@ -54,7 +52,8 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
             confounder_names=args.confounder_names,
             model_type=args.model,
             augment_data=args.augment_data,
-            metadata_csv_name=args.metadata_csv_name if (args.metadata_csv_name is not None) else "metadata.csv"
+            metadata_csv_name=args.metadata_csv_name if (args.metadata_csv_name is not None) else "metadata.csv",
+            classifier_group_path=args.classifier_group_path, # all this does is optionally load the classifier group arrays as a separate dataset member
         )
     else: 
         full_dataset = confounder_settings[args.dataset]["constructor"](
@@ -64,65 +63,40 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
             model_type=args.model,
             augment_data=args.augment_data,
             metadata_csv_name=args.metadata_csv_name if (args.metadata_csv_name is not None) else "metadata.csv",
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            classifier_group_path=args.classifier_group_path,
         )
         
-    if return_full_dataset:
-        if args.classifier_groups:
-            return DROClassifiersDataset(
-                full_dataset,
-                process_item_fn=None,
-                n_classes=full_dataset.n_classes,
-                group_str_fn=full_dataset.group_str,
-                group_info_path=args.group_info_path
-            )
-        else:
-            return DRODataset(
-                full_dataset,
-                process_item_fn=None,
-                n_groups=full_dataset.n_groups,
-                n_classes=full_dataset.n_classes,
-                group_str_fn=full_dataset.group_str,
-            )
+    # DRODataset( ConfounderDataset )
+    if return_full_dataset: # get_group_array here calls confounder_dataset's get_group_array directly
+        return DRODataset(
+            full_dataset,
+            process_item_fn=None,
+            n_groups=full_dataset.get_n_groups(args.classifier_group_path != '' and split != 'test'),
+            n_classes=full_dataset.n_classes,
+            group_str_fn=partial(full_dataset.group_str, use_classifier_groups=(args.classifier_group_path != '')),
+            use_classifier_groups=(args.classifier_group_path != '')
+        )
+
     if train:
         splits = ["train", "val", "test"]
     else:
         splits = ["test"]
-    subsets = full_dataset.get_splits(splits, train_frac=args.fraction)
-    if args.classifier_groups:
-        if train:
-            dro_subsets = [
-                DROClassifiersDataset(
-                    subsets[split],
-                    process_item_fn=None,
-                    n_classes=full_dataset.n_classes,
-                    group_str_fn=full_dataset.group_str,
-                    group_info_path=args.group_info_path
-                ) for split in splits[0:2]
-            ]
-        else:
-            dro_subsets = list()
 
-        dro_subsets.append(
-            DRODataset(
-                subsets["test"],
-                process_item_fn=None,
-                n_groups=full_dataset.n_groups,
-                n_classes=full_dataset.n_classes,
-                group_str_fn=full_dataset.group_str,
-            )
-        )
-        # for subset in dro_subsets:
-        #     print(subset.dataset.indices[0:10])
-        #     print(subset.dataset.group_array)
-    else:
-        dro_subsets = [
-            DRODataset(
-                subsets[split],
-                process_item_fn=None,
-                n_groups=full_dataset.n_groups,
-                n_classes=full_dataset.n_classes,
-                group_str_fn=full_dataset.group_str,
-            ) for split in splits
-        ]
+    # Subset( ConfounderDataset )
+    subsets = full_dataset.get_splits(splits, train_frac=args.fraction, use_classifier_groups=(args.classifier_group_path != ''))
+    # we're telling subsets to use classifier groups or regular groups, so we know the get_group_array here will do the right thing
+
+    # DRODataset( Subset ( ConfounderDataset ) )
+    dro_subsets = [ # the call to get_group_array here goes to subset's get_group_array goes to confounder_dataset's get_group_array
+         DRODataset(
+            subsets[split],
+            process_item_fn=None,
+            n_groups=full_dataset.get_n_groups((args.classifier_group_path != '' and split != 'test')),
+            n_classes=full_dataset.n_classes,
+            group_str_fn=partial(full_dataset.group_str, use_classifier_groups=(args.classifier_group_path != '' and split != 'test')),
+            use_classifier_groups=(args.classifier_group_path != '' and split != 'test')
+        ) for split in splits
+    ]
+
     return dro_subsets

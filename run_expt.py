@@ -11,7 +11,6 @@ from copy import deepcopy
 import math
 import time
 import matplotlib.pyplot as plt
-import umap
 
 from models import model_attributes
 from data.data import dataset_attributes, shift_types, prepare_data, log_data
@@ -21,6 +20,17 @@ from utils import set_seed, Logger, CSVBatchLogger, log_args, get_model, hinge_l
 from train import train
 from data.folds import Subset, ConcatDataset
 
+from learned_visualizations import visualize
+from get_embeddings import get_embeddings
+
+import torch.multiprocessing as mp
+
+from groups2 import FindGroups
+from find_groups import find_groups
+
+from functools import partial
+
+# TODO: fix this
 def get_subset(
     dataset,
     seed=0,
@@ -60,7 +70,14 @@ def main(args):
         args.adam_epsilon = 1e-8
         args.warmup_steps = 0
 
-    if os.path.exists(args.log_dir) and args.resume:
+    if args.learned_vis or args.emb_to_groups:
+        use_embeddings = True
+        torch.manual_seed(42)
+        mp.set_start_method('spawn')
+    else:
+        use_embeddings = False
+
+    if os.path.exists(args.log_dir) and (args.resume or use_embeddings):
         resume = True
         mode = "a"
     else:
@@ -81,6 +98,7 @@ def main(args):
     test_data = None
     test_loader = None
     if args.shift_type == "confounder":
+        print('PREPARE DATA')
         train_data, val_data, test_data = prepare_data(
             args,
             train=True,
@@ -90,7 +108,7 @@ def main(args):
         raise NotImplementedError
         train_data, val_data = prepare_data(args, train=True)
 
-    if args.shrink:
+    if args.shrink: # TODO: Fix this
         print('SHRINKING')
         train_data, val_data, test_data = get_subset(train_data), get_subset(val_data), get_subset(test_data)
 
@@ -109,6 +127,7 @@ def main(args):
             cross_validation_ratio=(1 / args.num_folds_per_sweep),
             num_valid_per_point=args.num_sweeps,
             seed=args.seed,
+            use_classifier_groups=(args.classifier_group_path != '')
         )
 
     if args.up_weight != 0:
@@ -141,19 +160,21 @@ def main(args):
                 process_item_fn=None,
                 n_groups=train_data.n_groups,
                 n_classes=train_data.n_classes,
-                group_str_fn=train_data.group_str,
-                new_up_weight_array=up_weight_array
+                group_str_fn=partial(train_data.group_str, use_classifier_groups=(args.classifier_group_path != '')),
+                new_up_weight_array=up_weight_array,
+                use_classifier_groups=(args.classifier_group_path != '')
             )
         elif not args.upweight_misclassified:
             upsampled_points = Subset(train_data,
-                                    list(aug_indices) * up_weight_factor)
+                                    list(aug_indices) * up_weight_factor, use_classifier_groups=(args.classifier_group_path != ''))
             # Convert to DRODataset
             train_data = dro_dataset.DRODataset(
                 ConcatDataset([train_data, upsampled_points]),
                 process_item_fn=None,
-                n_groups=train_data.n_groups,
+                n_groups=train_data.n_groups, # TODO: fix this
                 n_classes=train_data.n_classes,
-                group_str_fn=train_data.group_str,
+                group_str_fn=partial(train_data.group_str, use_classifier_groups=(args.classifier_group_path != '')),
+                use_classifier_groups=(args.classifier_group_path != '')
             )
     elif args.aug_col is not None:
         print("\n"*2 + "WARNING: aug_col is not being used." + "\n"*2)
@@ -161,23 +182,44 @@ def main(args):
     #########################################################################
     #########################################################################
     #########################################################################
+    
+    print('GET MODEL')
+    ## Initialize model
+    model = get_model(
+        model=args.model,
+        pretrained=not args.train_from_scratch,
+        resume=resume,
+        n_classes=train_data.n_classes,
+        dataset=args.dataset,
+        log_dir=args.log_dir,
+        resume_path=args.resume_path
+    )
 
+    print('GET LOADERS')
     loader_kwargs = {
         "batch_size": args.batch_size,
         "num_workers": 4,
-        "pin_memory": True,
+        "pin_memory": not use_embeddings,
         "persistent_workers": True
     }
+
+    feature_extractor = None
+    if use_embeddings:
+        model.eval()
+        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+
     train_loader = dro_dataset.get_loader(train_data,
                                           train=True,
                                           reweight_groups=args.reweight_groups,
                                           upweight_misclassified=aug_indices if args.upweight_misclassified else None,
+                                          feature_extractor=feature_extractor,
                                           **loader_kwargs)
 
     val_loader = dro_dataset.get_loader(val_data,
                                         train=False,
                                         reweight_groups=None,
                                         upweight_misclassified=None,
+                                        feature_extractor=feature_extractor,
                                         **loader_kwargs)
 
     if test_data is not None:
@@ -185,6 +227,7 @@ def main(args):
                                              train=False,
                                              reweight_groups=None,
                                              upweight_misclassified=None,
+                                             feature_extractor=feature_extractor,
                                              **loader_kwargs)
 
     data = {}
@@ -195,43 +238,20 @@ def main(args):
     data["val_data"] = val_data
     data["test_data"] = test_data
 
-    n_classes = train_data.n_classes
+    log_data(data, logger)  
 
-    log_data(data, logger)
-
-    ## Initialize model
-    model = get_model(
-        model=args.model,
-        pretrained=not args.train_from_scratch,
-        resume=resume,
-        n_classes=train_data.n_classes,
-        dataset=args.dataset,
-        log_dir=args.log_dir,
-    )
     if args.wandb:
         wandb.watch(model)
 
+    if args.learned_vis:
+        assert resume == True
+        visualize(data, args.vis_layer)
+        return
 
-    # TODO: finish implementing umap visualization
-    # if args.pretrained_umap:
-    #     representations = []
-    #     labels = []
-    #     for images, labels_batch in train_loader:
-    #         outputs = model.fc1(model.flatten(images))
-    #         representations.extend(outputs.detach().numpy())
-    #         labels.extend(labels_batch.numpy())
-
-    #     # Step 5: Apply UMAP
-    #     reducer = umap.UMAP()
-    #     embedding = reducer.fit_transform(representations)
-
-    #     # Visualize UMAP
-    #     plt.figure(figsize=(10, 8))
-    #     plt.scatter(embedding[:, 0], embedding[:, 1], c=labels, cmap='tab10', s=10)
-    #     plt.colorbar()
-    #     plt.title('UMAP Visualization of MNIST Representations')
-    #     plt.show()
-    
+    if args.emb_to_groups:
+        assert resume == True
+        group_counts = find_groups(data)
+        return
 
     logger.flush()
 
@@ -262,6 +282,7 @@ def main(args):
                                     mode=mode)
 
     s = time.time()
+
     train(
         model,
         criterion,
@@ -274,6 +295,7 @@ def main(args):
         epoch_offset=epoch_offset,
         csv_name=args.fold,
         wandb=wandb if args.wandb else None,
+        use_classifier_groups=(args.classifier_group_path != '')
     )
     e = time.time()
     print('TOTAL TRAINING TIME', e - s)
@@ -311,8 +333,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--target_name")
     parser.add_argument("-c", "--confounder_names", nargs="+")
     parser.add_argument("--up_weight", type=int, default=0)
-    # Resume?
-    parser.add_argument("--resume", default=False, action="store_true")
+
     # Label shifts
     parser.add_argument("--minority_fraction", type=float)
     parser.add_argument("--imbalance_ratio", type=float)
@@ -386,17 +407,20 @@ if __name__ == "__main__":
     parser.add_argument("--aug_col", default=None)
 
     parser.add_argument("--shrink", action="store_true", default=False)
-    # TODO
     parser.add_argument("--mixed_precision", action="store_true", default=False)
 
-    parser.add_argument("--classifier_groups", default=False)
-    parser.add_argument(
-        "--group_info_path", 
-        default=None,
-        help="path to group info")
+    parser.add_argument("--classifier_group_path", default='')
 
     parser.add_argument("--lambda_loss", action="store_true", default=False)
     parser.add_argument("--upweight_misclassified", action="store_true", default=False)
+    
+    parser.add_argument("--resume", default=False, action="store_true")
+    parser.add_argument('--resume_path', default='last_model.pth')
+    parser.add_argument('--emb_layers', metavar='N', type=int, nargs='+', help='Layer indices, going backwards from tail (so 0 is last layer)')
+    parser.add_argument("--learned_vis", action="store_true", default=False)
+    parser.add_argument("--vis_layer", type=int, default=0)
+    parser.add_argument('--emb_to_groups', action="store_true", default=False)
+
 
     args = parser.parse_args()
     

@@ -129,6 +129,8 @@ def generate_downstream_commands(args):
             sub_exp_name += '_REWEIGHT' if args.upweight_misclassified else ''
             sub_exp_name += '_LAMBDA_LOSS' if args.lambda_loss else ''
             sub_exp_name += '_JTT_FAKE_DRO' if args.jtt_fake_dro else ''
+            sub_exp_name += '_SHRINK' if args.shrink else ''
+            sub_exp_name += '_CLSGROUPS' if args.classifier_group_path else ''
             # sub_exp_dir: results/dataset/exp_name/sub_exp_name
             sub_exp_dir = join(exp_dir, sub_exp_name)
             # job_script_path: results/dataset/exp_name/sub_exp_name/job.sh
@@ -139,11 +141,11 @@ def generate_downstream_commands(args):
             if not os.path.exists(sub_exp_dir):
                 os.makedirs(sub_exp_dir)
 
-            write_script(job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha)
+            write_script(args, job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha)
 
 
 
-def write_script(job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha):
+def write_script(args, job_script_path, method, confounder_name, aug_col, training_output_dir, metadata_path, up_weight, loss_type, joint_dro_alpha):
     with open(job_script_path, "w") as file:
         file.write(
             initialization_text.format(
@@ -164,7 +166,8 @@ def write_script(job_script_path, method, confounder_name, aug_col, training_out
             + (" --lambda_loss" if args.lambda_loss else "")
             + (" --mixed_precision" if args.mixed_precision else "")
             + (" --upweight_misclassified" if args.upweight_misclassified else "")
-    
+            + (" --shrink" if args.shrink else "")    
+            + (f" --classifier_group_path {args.classifier_group_path}" if args.classifier_group_path else '')
         )
 
         file.write(
@@ -179,6 +182,8 @@ def write_script(job_script_path, method, confounder_name, aug_col, training_out
             + (" --lambda_loss" if args.lambda_loss else "")
             + (" --mixed_precision" if args.mixed_precision else "")
             + (" --upweight_misclassified" if args.upweight_misclassified else "")
+            + (" --shrink" if args.shrink else "")
+            + (f" --classifier_group_path {args.classifier_group_path}" if args.classifier_group_path else '')
         )
         
         file.write("\n")
@@ -255,7 +260,9 @@ if __name__ == "__main__":
     parser.add_argument("--downsample", action="store_true", default=False)
     parser.add_argument("--jtt_fake_dro", action="store_true", default=False)
 
+    parser.add_argument("--shrink", action="store_true", default=False)
 
+    parser.add_argument("--classifier_group_path", default='')
 
     args = parser.parse_args()
 

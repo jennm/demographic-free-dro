@@ -15,6 +15,8 @@ from data.torchvision_datasets import *
 ### DATA PREPARATION ###
 ########################
 
+# TODO: BROKEN, doesn't support classifier param
+
 
 def prepare_label_shift_data(args, train):
     settings = label_shift_settings[args.dataset]

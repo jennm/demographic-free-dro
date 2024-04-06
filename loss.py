@@ -6,7 +6,7 @@ import numpy as np
 import joint_dro
 
 
-class LossComputer:
+class LossComputer: # separate loss computer for train, val, test
     def __init__(
         self,
         criterion,
@@ -32,12 +32,12 @@ class LossComputer:
         self.normalize_loss = normalize_loss
         self.btl = btl
 
-        self.n_groups = dataset.n_groups
-
+        self.n_groups = dataset.n_groups # TODO: Needs to look at right group array, I think this should be right?
         self.group_counts = dataset.group_counts().cuda()
-        # print('group_counts', self.group_counts)
+
+
         self.group_frac = self.group_counts / self.group_counts.sum()
-        self.group_str = dataset.group_str
+        self.group_str = dataset.group_str # TODO: Check this
 
         if self.loss_type == "joint_dro":
             # Joint DRO reg should be 0.
@@ -63,7 +63,7 @@ class LossComputer:
 
         self.reset_stats()
 
-    def loss(self, yhat, y, group_idx=None, is_training=False, lambda_weights=None):
+    def loss(self, yhat, y, group_idx=None, is_training=False, lambda_weights=None):        
         # compute per-sample and per-group losses
         per_sample_losses = self.criterion(yhat, y)
         per_sample_losses *= lambda_weights
@@ -107,6 +107,7 @@ class LossComputer:
 
         return actual_loss
 
+# NOTE: should be correct regardless of use_classifier_groups
     def compute_robust_loss(self, group_loss, group_count):
         """computes adjusted loss, gives back weighted sum of group losses
 
@@ -137,11 +138,13 @@ class LossComputer:
 
         return robust_loss, self.adv_probs
 
+# NOTE: should be correct regardless of use_classifier_groups
     def compute_robust_loss_btl(self, group_loss, group_count):
         adjusted_loss = self.exp_avg_loss + self.adj / torch.sqrt(
             self.group_counts)
         return self.compute_robust_loss_greedy(group_loss, adjusted_loss)
 
+# NOTE: should be correct regardless of use_classifier_groups
     def compute_robust_loss_greedy(self, group_loss, ref_loss):
         sorted_idx = ref_loss.sort(descending=True)[1]
         sorted_loss = group_loss[sorted_idx]
@@ -161,6 +164,7 @@ class LossComputer:
         unsorted_weights = weights[unsort_idx]
         return robust_loss, unsorted_weights
 
+# NOTE: should be correct regardless of use_classifier_groups
     def compute_group_avg(self, losses, group_idx):
         # compute observed counts and mean loss for each group
         if len(group_idx.shape) > 1:
@@ -171,10 +175,12 @@ class LossComputer:
             group_map = (group_idx == torch.arange(
                 self.n_groups).unsqueeze(1).long().cuda()).float()
             group_count = group_map.sum(1)
+
         group_denom = group_count + (group_count == 0).float()  # avoid nans
         group_loss = (group_map @ losses.view(-1)) / group_denom
         return group_loss, group_count
 
+# NOTE: should be correct regardless of use_classifier_groups
     def update_exp_avg_loss(self, group_loss, group_count):
         prev_weights = (1 - self.gamma * (group_count > 0).float()) * (
             self.exp_avg_initialized > 0).float()
@@ -183,6 +189,7 @@ class LossComputer:
         self.exp_avg_initialized = (self.exp_avg_initialized >
                                     0) + (group_count > 0)
 
+# NOTE: should be correct regardless of use_classifier_groups
     def reset_stats(self):
         self.processed_data_counts = torch.zeros(self.n_groups).cuda()
         self.update_data_counts = torch.zeros(self.n_groups).cuda()
@@ -194,6 +201,7 @@ class LossComputer:
         self.avg_acc = 0.0
         self.batch_count = 0.0
 
+# NOTE: should be correct regardless of use_classifier_groups
     def update_stats(self,
                      actual_loss,
                      group_loss,
@@ -232,6 +240,7 @@ class LossComputer:
         self.avg_per_sample_loss = group_frac @ self.avg_group_loss
         self.avg_acc = group_frac @ self.avg_group_acc
 
+# NOTE: should be correct regardless of use_classifier_groups
     def get_model_stats(self, model, args, stats_dict):
         model_norm_sq = 0.0
         for param in model.parameters():
@@ -240,6 +249,7 @@ class LossComputer:
         stats_dict["reg_loss"] = args.weight_decay / 2 * model_norm_sq.item()
         return stats_dict
 
+# NOTE: should be correct regardless of use_classifier_groups
     def get_stats(self, model=None, args=None):
         stats_dict = {}
         for idx in range(self.n_groups):
@@ -269,6 +279,7 @@ class LossComputer:
 
         return stats_dict
 
+# NOTE: should be correct regardless of use_classifier_groups
     def log_stats(self, logger, is_training):
         if logger is None:
             return

@@ -141,10 +141,9 @@ def hinge_loss(yhat, y):
     return torch_loss(yhat[:, 1], yhat[:, 0], y)
 
 
-def get_model(model, pretrained, resume, n_classes, dataset, log_dir):
+def get_model(model, pretrained, resume, n_classes, dataset, log_dir, resume_path):
     if resume:
-        model = torch.load(os.path.join(log_dir, "last_model.pth"))
-        # d = train_data.input_size()[0]
+        model = torch.load(os.path.join(log_dir, resume_path))
     elif model_attributes[model]["feature_type"] in (
             "precomputed",
             "raw_flattened",

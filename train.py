@@ -35,7 +35,8 @@ def run_epoch(
     scheduler=None,
     csv_name=None,
     wandb_group=None,
-    wandb=None
+    wandb=None,
+    use_classifier_groups=False
 ):
     """
     scheduler is only used inside this function if model is bert.
@@ -62,7 +63,7 @@ def run_epoch(
             batch = tuple(t.to(device) for t in batch)
             x = batch[0]
             y = batch[1]
-            g = batch[2]
+            g = batch[-1] if use_classifier_groups else batch[2] 
             up_weight_array = batch[3]
             data_idx = batch[4]
             
@@ -187,6 +188,7 @@ def train(
     epoch_offset,
     csv_name=None,
     wandb=None,
+    use_classifier_groups=False
 ):
     model = model.to(device)
 
@@ -198,6 +200,7 @@ def train(
     else:
         adjustments = np.array(adjustments)
 
+    # TODO: fix this to account for classifier groups
     train_loss_computer = LossComputer(
         criterion,
         loss_type=args.loss_type,
@@ -286,6 +289,7 @@ def train(
             scheduler=scheduler,
             wandb_group="train",
             wandb=wandb,
+            use_classifier_groups=use_classifier_groups
         )
 
         logger.write(f"\nValidation:\n")
@@ -316,10 +320,11 @@ def train(
             csv_name=csv_name,
             wandb_group="val",
             wandb=wandb,
+            use_classifier_groups=use_classifier_groups
         )
 
         # Test set; don't print to avoid peeking
-        if dataset["test_data"] is not None:
+        if dataset["test_data"] is not None: # TODO: make sure this will refer to write groups
             test_loss_computer = LossComputer(
                 criterion,
                 loss_type=args.loss_type,
@@ -333,7 +338,7 @@ def train(
                 min_var_weight=args.minimum_variational_weight,
                 joint_dro_alpha=args.joint_dro_alpha,
             )
-            run_epoch(
+            run_epoch( # use the regular groups
                 epoch,
                 model,
                 optimizer,
@@ -389,7 +394,7 @@ def train(
                 train_loss_computer.group_counts)
             train_loss_computer.adj = adjustments
             logger.write("Adjustments updated\n")
-            for group_idx in range(train_loss_computer.n_groups):
+            for group_idx in range(train_loss_computer.n_groups): # TODO: make sure this looks at the right n_groups
                 logger.write(
                     f"  {train_loss_computer.get_group_name(group_idx)}:\t"
                     f"adj = {train_loss_computer.adj[group_idx]:.3f}\n")

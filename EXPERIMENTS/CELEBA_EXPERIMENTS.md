@@ -21,4 +21,17 @@ Upweight Misclassified:
 
 `bash results/CelebA/CelebA_TEST/train_downstream_ERM_upweight_0_epochs_50_lr_1e-05_weight_decay_0.1/final_epoch1/JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1_REWEIGHT/job.sh`
 
-`python analysis.py --exp_name CelebA_TEST/train_downstream_ERM_upweight_0_epochs_50_lr_1e-05_weight_decay_0.1/final_epoch1/ --dataset ColoredMNIST --exp_substring JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1_REWEIGHT`
+`python analysis.py --exp_name CelebA_TEST/train_downstream_ERM_upweight_0_epochs_50_lr_1e-05_weight_decay_0.1/final_epoch1/ --dataset CelebA --exp_substring JTT_upweight_50_epochs_50_lr_1e-05_weight_decay_0.1_REWEIGHT`
+
+Val Robust Worst Group val   acc (early stop at epoch 15): 81.3
+Val Robust Worst Group test  acc (early stop at epoch 15): 75.0
+Val Average Acc val   acc (early stop at epoch 15): 91.8
+Val Average Acc test  acc (early stop at epoch 15): 92.0
+group 0 acc val   acc (early stop at epoch 15): 86.9
+group 0 acc test  acc (early stop at epoch 15): 89.1
+group 1 acc val   acc (early stop at epoch 15): 96.4
+group 1 acc test  acc (early stop at epoch 15): 95.9
+group 2 acc val   acc (early stop at epoch 15): 93.8
+group 2 acc test  acc (early stop at epoch 15): 92.9
+group 3 acc val   acc (early stop at epoch 15): 81.3
+group 3 acc test  acc (early stop at epoch 15): 75.0
