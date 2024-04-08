@@ -84,6 +84,14 @@ class DRODataset(Dataset):
         for x, y, g, _ in self:
             return x.size()
 
+    def create_LR_y(self):
+        self.dataset.create_LR_y()
+
+    def get_LR_label_array(self):
+        return self.dataset.get_LR_label_array()
+
+    def update_LR_y(self, idx, new_y):
+        self.dataset.update_LR_y(idx, new_y)
 
 def get_loader(dataset, train, reweight_groups, upweight_misclassified, feature_extractor=None, **kwargs):
     if feature_extractor:

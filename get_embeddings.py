@@ -6,22 +6,36 @@ from torch.utils.data import DataLoader
 from torchvision.models.feature_extraction import get_graph_node_names
 from torchvision.models.feature_extraction import create_feature_extractor
 
+import numpy as np
+
 
 def collate_func(batch, feature_extractor):
-    inputs = torch.stack([sample[0] for sample in batch])
-    labels = torch.stack([sample[1] for sample in batch])
-    group = torch.stack([sample[2] for sample in batch])
-    data_idx = torch.stack([sample[4] for sample in batch])
-
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    inputs = torch.stack([sample[0] for sample in batch]).to(device)
+
+    labels = torch.tensor([sample[1] for sample in batch]).to(device)
+    LR_y = torch.tensor([sample[-2] for sample in batch]).to(device)
+
+    group = np.array([sample[2] for sample in batch])
+    classifier_group = np.array([sample[-1] for sample in batch])
+
+    data_idx = np.array([sample[4] for sample in batch])
+
+
     with torch.no_grad():
-        inputs = inputs.to(device)
         embeddings = feature_extractor(inputs)
         # NOTE: inputs, embeddings will be saved on GPU not CPU
 
-    
-    data = {'embeddings': embeddings, 'idx': data_idx, 'inputs': inputs, 'group': group, 'LR_targets': labels, 'actual_targets': labels}
+        if torch.all(LR_y == -1):
+            predicted = torch.argmax(embeddings[str(0)], dim=1)
+            misclassified = (predicted != labels).long()
+            LR_y = misclassified
+
+
+    data = {'embeddings': embeddings, 'idx': data_idx, 
+            'inputs': inputs, 'group': group, 'classifier_group' : classifier_group, 
+            'LR_targets': LR_y, 'actual_targets': labels}
 
     return data
 
@@ -34,11 +48,11 @@ def create_dataloader(feature_extractor, dataset, shared_dl_args):
 def get_nodes(model, layers):
     train_nodes, _ = get_graph_node_names(model)
     nodes = {}
-    num_layers = sum(1 for _ in model.modules())
-    for i, module in enumerate(model.named_modules()):
-        if (num_layers - i - 1) in layers:
-            nodes[module[0]] = (num_layers - i - 1)
-            assert module[0] in train_nodes
+
+    num_layers = len(train_nodes)
+    for layer in layers:
+        if layer < num_layers:
+            nodes[train_nodes[-(layer + 1)]] = layer
 
     return nodes
 

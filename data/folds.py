@@ -24,6 +24,7 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
         self.indices = indices
         self.group_array = self.get_group_array(re_evaluate=True, use_classifier_groups=use_classifier_groups)
         self.label_array = self.get_label_array(re_evaluate=True)
+        self.LR_label_array = self.get_LR_label_array()
         
     def update_up_weight_array(self, new_up_weight_array):
         self.up_weight_array = self.dataset.update_up_weight_array(new_up_weight_array)
@@ -55,9 +56,22 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
         else:
             return self.label_array
 
+    def update_y(self, idx, new_y):
+        self.dataset.update_y(idx, new_y)
+
     # NOTE: not the source of bug
     def get_n_groups(self, use_classifier_groups):
         return self.dataset.get_n_groups(use_classifier_groups)
+
+    def create_LR_y(self):
+        self.dataset.create_LR_y()
+
+    def get_LR_label_array(self):
+        return self.dataset.get_LR_label_array()[self.indices]
+
+    def update_LR_y(self, idx, new_y):
+        self.dataset.update_LR_y(idx, new_y)
+
 
 # NOTE: not the source of bug
 class ConcatDataset(torch.utils.data.ConcatDataset):

@@ -20,11 +20,6 @@ class ConfounderDataset(Dataset):
     ):
         raise NotImplementedError
 
-    # def update_LR_target(self, indices, new_values):
-    #     if not hasattr(self, 'LR_targets'):
-    #         self.LR_targets = []  
-    #     self.LR_targets[indices] = new_values
-
     def get_group_array(self, use_classifier_groups=False):
         if use_classifier_groups: return self.classifier_group_array
         else: return self.group_array
@@ -36,13 +31,25 @@ class ConfounderDataset(Dataset):
     def get_label_array(self):
         return self.y_array
 
+    def create_LR_y(self):
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.LR_label_array = torch.ones(self.y_array.shape, device=device, dtype=torch.long) * -1
+
+    def get_LR_label_array(self):
+        if not hasattr(self, 'LR_label_array'):
+            self.create_LR_y()
+        return self.LR_label_array
+
+    def update_LR_y(self, idx, new_y):
+        self.LR_label_array[idx] = new_y
+
     def get_up_weight_array(self):
         return self.up_weight_array
 
     def __len__(self):
         return len(self.filename_array)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): # this index is relative to the underlying dataset (the full dataset)
         y = self.y_array[idx]
         g = self.get_group_array()[idx]
 
@@ -51,6 +58,8 @@ class ConfounderDataset(Dataset):
             classifier_group_array = self.get_group_array(use_classifier_groups=True)
             if idx < len(classifier_group_array):
                 classifier_g = classifier_group_array[idx]
+
+        LR_y = self.get_LR_label_array()[idx]
 
         up_weight = self.up_weight_array[idx]
 
@@ -76,7 +85,7 @@ class ConfounderDataset(Dataset):
                 img = img.view(-1)
             x = img
 
-        return x, y, g, up_weight, idx, classifier_g
+        return x, y, g, up_weight, idx, LR_y, classifier_g
 
     def get_splits(self, splits, train_frac=1.0, use_classifier_groups=False):
         subsets = {}

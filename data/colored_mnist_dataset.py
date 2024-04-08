@@ -63,6 +63,18 @@ class ColoredMNISTDataset(ConfounderDataset):
             group_info = torch.load('groups_from_classifiers_info.pt')
             self.classifier_group_array = group_info['group_array'].numpy()
             self.classifier_n_groups = self.classifier_group_array.shape[1]
+            
+            # self.classifier_group_array = group_info['group_array']
+
+            # boolean_mask = self.classifier_group_array != -1
+            # long_mask = torch.where(boolean_mask, torch.tensor(1), torch.tensor(0))
+            # result = torch.sum(long_mask * 2**torch.arange(0, long_mask.size(1), 1, dtype=torch.long, device=long_mask.device), dim=1).numpy()
+
+            # unique_numbers = np.unique(result)
+            # mapping = {num: idx for idx, num in enumerate(unique_numbers)}
+
+            # self.classifier_group_array = np.vectorize(mapping.get)(result)
+            # self.classifier_n_groups = len(unique_numbers)
 
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)

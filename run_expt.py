@@ -25,7 +25,6 @@ from get_embeddings import get_embeddings
 
 import torch.multiprocessing as mp
 
-from groups2 import FindGroups
 from find_groups import find_groups
 
 from functools import partial

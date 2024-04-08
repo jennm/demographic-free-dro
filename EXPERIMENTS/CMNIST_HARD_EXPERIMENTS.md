@@ -71,7 +71,7 @@ group 3 acc test  acc (early stop at epoch 4): 94.4
 
 python generate_downstream.py --exp_name ColoredMNIST_HARD_TEST --dataset ColoredMNIST_HARD --method GROUP_DRO --batch_size 32 --classifier_group_path test
 bash results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/GROUP_DRO_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001_CLSGROUPS/job.sh
-python analysis.py --exp_name ColoredMNIST_HARD_TEST --dataset ColoredMNIST_HARD --exp_substring ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001_CLSGROUPS
+python analysis.py --exp_name ColoredMNIST_HARD_TEST --dataset ColoredMNIST_HARD --exp_substring GROUP_DRO_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001_CLSGROUPS
 
 
 python generate_downstream.py --exp_name ColoredMNIST_HARD_TEST --dataset ColoredMNIST_HARD --method GROUP_DRO --batch_size 32
