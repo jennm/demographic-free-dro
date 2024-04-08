@@ -33,7 +33,7 @@ class ConfounderDataset(Dataset):
 
     def create_LR_y(self):
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.LR_label_array = torch.ones(self.y_array.shape, device=device, dtype=torch.long) * -1
+        self.LR_label_array = torch.ones(self.y_array.shape, device=device, dtype=torch.long) * 0
 
     def get_LR_label_array(self):
         if not hasattr(self, 'LR_label_array'):

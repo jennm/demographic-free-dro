@@ -60,7 +60,7 @@ class ColoredMNISTDataset(ConfounderDataset):
                             + self.confounder_array).astype("int")
 
         if classifier_group_path:
-            group_info = torch.load('groups_from_classifiers_info.pt')
+            group_info = torch.load('classifier_groups.pt')
             self.classifier_group_array = group_info['group_array'].numpy()
             self.classifier_n_groups = self.classifier_group_array.shape[1]
             

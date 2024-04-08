@@ -95,7 +95,21 @@ class DRODataset(Dataset):
 
 def get_loader(dataset, train, reweight_groups, upweight_misclassified, feature_extractor=None, **kwargs):
     if feature_extractor:
-        return create_dataloader(feature_extractor, dataset, kwargs) # TODO: change so use classifier groups isn't always False here
+        sampler = None
+        if upweight_misclassified is not None:
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            dataset.update_LR_y(upweight_misclassified, torch.ones(len(upweight_misclassified)).long().to(device))
+
+            misclassified_count = len(upweight_misclassified)
+            correct_count = len(dataset) - misclassified_count
+            correct_wrong_weights = [len(dataset) / correct_count, len(dataset) / misclassified_count]
+            weights = [correct_wrong_weights[1] if i in upweight_misclassified else correct_wrong_weights[0] for i in range(len(dataset))]
+            shuffle = False
+            sampler = WeightedRandomSampler(weights, len(dataset), replacement=True)
+
+            return create_dataloader(feature_extractor, dataset, sampler, kwargs), create_dataloader(feature_extractor, dataset, None, kwargs)
+
+        return create_dataloader(feature_extractor, dataset, sampler, kwargs) # TODO: change so use classifier groups isn't always False here
 
     ##############################################################
     ##############################################################

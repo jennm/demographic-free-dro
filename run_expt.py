@@ -130,6 +130,7 @@ def main(args):
         )
 
     if args.up_weight != 0:
+        print('UPWEIGHTING SOMETHING')
         assert args.aug_col is not None
         # Get points that should be upsampled
         metadata_df = pd.read_csv(args.metadata_path)

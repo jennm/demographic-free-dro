@@ -118,7 +118,8 @@ group 2 acc test  acc (early stop at epoch 4): 96.5
 group 3 acc val   acc (early stop at epoch 4): 85.8
 group 3 acc test  acc (early stop at epoch 4): 96.5
 
-python generate_downstream.py --exp_name ColoredMNIST_TEST --dataset ColoredMNIST --method ERM --batch_size 32 --classifier_group_path test
+python generate_downstream.py --exp_name ColoredMNIST_TEST --dataset ColoredMNIST --method GROUP_DRO --batch_size 32 --classifier_group_path test
+
 bash results/ColoredMNIST/ColoredMNIST_TEST/ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001_CLSGROUPS/job.sh
 python analysis.py --exp_name ColoredMNIST_TEST --dataset ColoredMNIST --exp_substring ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001_CLSGROUPS
 

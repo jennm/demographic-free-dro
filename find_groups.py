@@ -28,8 +28,13 @@ def train_classifier(device, model, train_emb_loader, criterion, optimizer, num_
         for batch in train_emb_loader: # get each batch
             batch_multi_emb = reshape_batch_embs(batch['embeddings']) # reshape to combine embeddings from multiple layers, already on GPU
             LR_targets = batch['LR_targets'] # B_k, R_k from discussion NOT actual data targets like Male Female, not on GPU
+            
+            print('DISTRIBUTION:', (LR_targets == 0).sum(), (LR_targets == 1).sum())
+            # print('BATCH_MULTI_EMB', batch_multi_emb)
+            # w1 = LR_targets.shape[0] / (LR_targets == 0).sum() if (LR_targets == 0).sum() > 0 else 1
+            # w2 = LR_targets.shape[0] / (LR_targets == 1).sum() if (LR_targets == 1).sum() > 0 else 1
+            # criterion.weight = torch.tensor([w1, w2], device=device, dtype=torch.float)
 
-            # criterion.weight = torch.tensor([(LR_targets == 0).sum() / LR_targets.shape[0], (LR_targets == 1).sum() / LR_targets.shape[0]], device=device)
             optimizer.zero_grad()
             outputs = model(batch_multi_emb)
             loss = criterion(outputs, LR_targets)
@@ -82,8 +87,8 @@ def eval_classifier(device, model, val_emb_loader):
 
             tp += ((erm_predicted_labels != true_labels) & (LR_predicted == all_ones)).sum().item()  # how many ERM misclassified points does the classifier put in group 1
             fp += ((erm_predicted_labels == true_labels) & (LR_predicted == all_ones)).sum().item()  # how many ERM correctly classified points does the classifier put in group 1
-            tn += ((erm_predicted_labels != true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM misclassified points does the classifier put in group 0
-            fn += ((erm_predicted_labels == true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM correctly classified points does the classifier put in group 0
+            tn += ((erm_predicted_labels == true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM misclassified points does the classifier put in group 0
+            fn += ((erm_predicted_labels != true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM correctly classified points does the classifier put in group 0
 
             total += LR_predicted.size(0)
             correct += tp + tn
@@ -101,16 +106,16 @@ def _find_groups(data, num_epochs, k, groups):
 
     pos_group_count = 0
 
-    train_emb_loader = data['train_loader']
+    train_emb_loader, uni_train_emb_loader = data['train_loader'][0], data['train_loader'][1]
     val_emb_loader = data['val_loader']
     test_emb_loader = data['test_loader']
 
-    print('CREATING LR B_0, K_0 TARGETS')
-    for loader, dataset in zip([train_emb_loader, val_emb_loader], [data['train_data'], data['val_data']]): # we don't actually use test_data
-        for batch in loader:
-            data_idx = batch['idx']
-            misclassified = batch['LR_targets']
-            dataset.update_LR_y(data_idx, misclassified)
+    # print('CREATING LR B_0, K_0 TARGETS')
+    # for loader, dataset in zip([train_emb_loader, val_emb_loader], [data['train_data'], data['val_data']]): # we don't actually use test_data
+    #     for batch in loader:
+    #         data_idx = batch['idx']
+    #         misclassified = batch['LR_targets']
+    #         dataset.update_LR_y(data_idx, misclassified)
 
     ex_batch = next(iter(train_emb_loader))['embeddings'] # example batch of embeddings (this is a dictionary)
     ex_batch_multi_emb = reshape_batch_embs(ex_batch) # concatenate embeddings from multiple layers together
@@ -128,7 +133,7 @@ def _find_groups(data, num_epochs, k, groups):
 
     for i in range(k):
         print(f'SINGLE GROUP FINDING ITER {i}/{k}')
-        update_misclassified(data['train_data'], train_emb_loader, model, threshold=1.5)
+        update_misclassified(data['train_data'], uni_train_emb_loader, model, threshold=1.5)
         train_classifier(device, model, train_emb_loader, criterion, optimizer, num_epochs)
 
         eval_classifier(device, model, val_emb_loader)
@@ -136,7 +141,7 @@ def _find_groups(data, num_epochs, k, groups):
 
     model.eval()
     with torch.no_grad():
-        for loader in [train_emb_loader, val_emb_loader]:
+        for loader in [uni_train_emb_loader, val_emb_loader]:
             for batch in loader:
                 batch_multi_emb = reshape_batch_embs(batch['embeddings']) # reshape to combine embeddings from multiple layers, already on GPU
                 LR_targets = batch['LR_targets'] # B_k, R_k from discussion NOT actual data targets like Male Female, not on GPU
@@ -151,7 +156,7 @@ def _find_groups(data, num_epochs, k, groups):
                     
     return groups, pos_group_count, (len(groups) - pos_group_count)
 
-def find_groups(data, num_epochs=5, k=1, max_iter=1, min_group=100, groups=None):
+def find_groups(data, num_epochs=5, k=5, max_iter=10, min_group=100, groups=None):
     if not groups: groups = defaultdict(lambda: [0])
     else: 
         torch.load(groups)
@@ -163,6 +168,7 @@ def find_groups(data, num_epochs=5, k=1, max_iter=1, min_group=100, groups=None)
     while pos_count > min_group and neg_count > min_group and run < max_iter:
         print('FINDING ONE MORE GROUP')
         groups, pos_count, neg_count = _find_groups(data, num_epochs, k, groups)
+        print('POS COUNT:', pos_count, 'NEG COUNT:', neg_count)
         run += 1
 
     save_idx = list(groups.keys())

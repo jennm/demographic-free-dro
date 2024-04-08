@@ -27,10 +27,16 @@ def collate_func(batch, feature_extractor):
         embeddings = feature_extractor(inputs)
         # NOTE: inputs, embeddings will be saved on GPU not CPU
 
-        if torch.all(LR_y == -1):
-            predicted = torch.argmax(embeddings[str(0)], dim=1)
-            misclassified = (predicted != labels).long()
-            LR_y = misclassified
+        # if torch.all(LR_y == -1):
+        #     predicted = torch.argmax(embeddings[str(0)], dim=1)
+        #     misclassified = (predicted != labels).long()
+        #     LR_y = misclassified
+
+            # misclassified = torch.zeros(labels.shape, device=device)
+            # num_ones = int(0.5 * misclassified.size(0))
+            # indices = torch.randperm(misclassified.size(0))
+            # misclassified[indices[:num_ones]] = 1
+            # LR_y = misclassified.long()
 
 
     data = {'embeddings': embeddings, 'idx': data_idx, 
@@ -40,9 +46,9 @@ def collate_func(batch, feature_extractor):
     return data
 
 
-def create_dataloader(feature_extractor, dataset, shared_dl_args):
+def create_dataloader(feature_extractor, dataset, sampler, shared_dl_args):
     collate_fn = partial(collate_func, feature_extractor=feature_extractor)
-    return DataLoader(dataset, **shared_dl_args, collate_fn=collate_fn)
+    return DataLoader(dataset, **shared_dl_args, collate_fn=collate_fn, sampler=sampler)
 
 
 def get_nodes(model, layers):

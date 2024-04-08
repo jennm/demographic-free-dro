@@ -24,6 +24,14 @@ analysis.py doens't work
 for find groups:
 python run_expt.py -s confounder -d ColoredMNIST -t target -c confounder --batch_size 32 --root_dir ./ --n_epochs 5 --aug_col None --log_dir results/ColoredMNIST/ColoredMNIST_TEST/ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/model_outputs --metadata_path results/ColoredMNIST/ColoredMNIST_TEST/metadata_aug.csv --lr 0.001 --weight_decay 0.0001 --up_weight 0 --metadata_csv_name metadata.csv --model cnn --use_bert_params 0 --loss_type erm --emb_layer 0 --emb_to_groups
 
+
+python run_expt.py -s confounder -d ColoredMNIST_HARD -t target -c confounder --batch_size 32 --root_dir ./ --n_epochs 5 --aug_col None --log_dir results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/model_outputs --metadata_path results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/metadata_aug.csv --lr 0.001 --weight_decay 0.0001 --up_weight 0 --metadata_csv_name metadata.csv --model cnn --use_bert_params 0 --loss_type erm --emb_layer 0 --emb_to_groups
+
+
+python run_expt.py -s confounder -d ColoredMNIST -t target -c confounder --batch_size 32 --root_dir ./ --n_epochs 5 --aug_col wrong_1_times --log_dir results/ColoredMNIST/ColoredMNIST_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/JTT_upweight_50_epochs_5_lr_0.001_weight_decay_0.0001_REWEIGHT/model_outputs --metadata_path results/ColoredMNIST/ColoredMNIST_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv --lr 0.001 --weight_decay 0.0001 --up_weight 50 --metadata_csv_name metadata.csv --model cnn --use_bert_params 1 --loss_type erm --upweight_misclassified --emb_layer 0 --emb_to_groups
+
+
+
 TODO:
 move redundant methods to confounder dataset
 store predicted label
