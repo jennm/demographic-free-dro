@@ -24,17 +24,23 @@ def train_classifier(device, model, train_emb_loader, criterion, optimizer, num_
     model.train() # model already explicitly moved to device
     for epoch in range(num_epochs): # for each epoch
         print(f'EPOCH {epoch} / {num_epochs}')
+        total_loss = 0
         for batch in train_emb_loader: # get each batch
             batch_multi_emb = reshape_batch_embs(batch['embeddings']) # reshape to combine embeddings from multiple layers, already on GPU
             LR_targets = batch['LR_targets'] # B_k, R_k from discussion NOT actual data targets like Male Female, not on GPU
 
-            criterion.weight = torch.tensor([(LR_targets == 0).sum() / LR_targets.shape[0], (LR_targets == 1).sum() / LR_targets.shape[0]], device=device)
+            # criterion.weight = torch.tensor([(LR_targets == 0).sum() / LR_targets.shape[0], (LR_targets == 1).sum() / LR_targets.shape[0]], device=device)
             optimizer.zero_grad()
             outputs = model(batch_multi_emb)
             loss = criterion(outputs, LR_targets)
             loss = loss.mean()
+            total_loss += loss.detach().item()
             loss.backward()
             optimizer.step()
+
+            # print(outputs, LR_targets)
+
+        print(f'total loss {epoch}: {total_loss}')
 
 def update_misclassified(train_data, train_emb_loader, model, threshold):
     print('UPDATING MISCLASSIFIED')
@@ -74,16 +80,16 @@ def eval_classifier(device, model, val_emb_loader):
             
             LR_predicted = torch.argmax(outputs, dim=1)
 
-            tp += ((LR_predicted == 1) & (erm_predicted_labels != true_labels) & (LR_predicted == all_ones)).sum().item()
-            fp += ((LR_predicted != 1) & (erm_predicted_labels != true_labels) & (LR_predicted == all_ones)).sum().item()
-            tn += ((LR_predicted == 0) & (erm_predicted_labels == true_labels) & (LR_predicted == all_zeros)).sum().item()
-            fn += ((LR_predicted != 0) & (erm_predicted_labels == true_labels) & (LR_predicted == all_zeros)).sum().item()
+            tp += ((erm_predicted_labels != true_labels) & (LR_predicted == all_ones)).sum().item()  # how many ERM misclassified points does the classifier put in group 1
+            fp += ((erm_predicted_labels == true_labels) & (LR_predicted == all_ones)).sum().item()  # how many ERM correctly classified points does the classifier put in group 1
+            tn += ((erm_predicted_labels != true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM misclassified points does the classifier put in group 0
+            fn += ((erm_predicted_labels == true_labels) & (LR_predicted == all_zeros)).sum().item() # how many ERM correctly classified points does the classifier put in group 0
 
             total += LR_predicted.size(0)
             correct += tp + tn
 
         accuracy = correct / total
-        print(tp, fp, tn, fn)
+        print('TP:', tp, 'FP:', fp, 'TN:', tn, 'FN:', fn)
         print(f'Val Accuracy: {accuracy:.4f}')
         ppv = tp/(max(1, tp+fp))
         print(f'TPR: {tp/(max(1, tp+fn))}\tFPR: {fp/(max(1, tn+fp))}\tTNR: {tn/(max(1, tn+fp))}\tFNR: {fn/(max(1, tp+fn))}\tPPV: {ppv}\t1 - PPV: {1 - ppv}')
@@ -145,7 +151,7 @@ def _find_groups(data, num_epochs, k, groups):
                     
     return groups, pos_group_count, (len(groups) - pos_group_count)
 
-def find_groups(data, num_epochs=5, k=5, max_iter=10, min_group=100, groups=None):
+def find_groups(data, num_epochs=5, k=1, max_iter=1, min_group=100, groups=None):
     if not groups: groups = defaultdict(lambda: [0])
     else: 
         torch.load(groups)
