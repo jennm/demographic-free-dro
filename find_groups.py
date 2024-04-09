@@ -29,7 +29,7 @@ def train_classifier(device, model, train_emb_loader, criterion, optimizer, num_
             batch_multi_emb = reshape_batch_embs(batch['embeddings']) # reshape to combine embeddings from multiple layers, already on GPU
             LR_targets = batch['LR_targets'] # B_k, R_k from discussion NOT actual data targets like Male Female, not on GPU
             
-            print('DISTRIBUTION:', (LR_targets == 0).sum(), (LR_targets == 1).sum())
+            # print('DISTRIBUTION:', (LR_targets == 0).sum(), (LR_targets == 1).sum())
             # print('BATCH_MULTI_EMB', batch_multi_emb)
             # w1 = LR_targets.shape[0] / (LR_targets == 0).sum() if (LR_targets == 0).sum() > 0 else 1
             # w2 = LR_targets.shape[0] / (LR_targets == 1).sum() if (LR_targets == 1).sum() > 0 else 1
@@ -42,8 +42,6 @@ def train_classifier(device, model, train_emb_loader, criterion, optimizer, num_
             total_loss += loss.detach().item()
             loss.backward()
             optimizer.step()
-
-            # print(outputs, LR_targets)
 
         print(f'total loss {epoch}: {total_loss}')
 
@@ -101,7 +99,7 @@ def eval_classifier(device, model, val_emb_loader):
 
 def _find_groups(data, num_epochs, k, groups):
 
-    group_num = 1 if (len(groups) == 0) else (max(groups.keys()) + 1)
+    group_num = 1 if (len(groups) == 0) else (len(groups[0]) + 1)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     pos_group_count = 0
@@ -109,13 +107,6 @@ def _find_groups(data, num_epochs, k, groups):
     train_emb_loader, uni_train_emb_loader = data['train_loader'][0], data['train_loader'][1]
     val_emb_loader = data['val_loader']
     test_emb_loader = data['test_loader']
-
-    # print('CREATING LR B_0, K_0 TARGETS')
-    # for loader, dataset in zip([train_emb_loader, val_emb_loader], [data['train_data'], data['val_data']]): # we don't actually use test_data
-    #     for batch in loader:
-    #         data_idx = batch['idx']
-    #         misclassified = batch['LR_targets']
-    #         dataset.update_LR_y(data_idx, misclassified)
 
     ex_batch = next(iter(train_emb_loader))['embeddings'] # example batch of embeddings (this is a dictionary)
     ex_batch_multi_emb = reshape_batch_embs(ex_batch) # concatenate embeddings from multiple layers together
@@ -156,13 +147,15 @@ def _find_groups(data, num_epochs, k, groups):
                     
     return groups, pos_group_count, (len(groups) - pos_group_count)
 
-def find_groups(data, num_epochs=5, k=5, max_iter=10, min_group=100, groups=None):
+def find_groups(data, num_epochs=5, k=1, max_iter=4, min_group=100, groups=None):
     if not groups: groups = defaultdict(lambda: [0])
     else: 
         torch.load(groups)
         groups = {i: row.tolist() for i, row in enumerate(groups)}
 
     pos_count, neg_count = float('inf'), float('inf')
+
+    data['train_data'].create_LR_y()
 
     run = 0
     while pos_count > min_group and neg_count > min_group and run < max_iter:

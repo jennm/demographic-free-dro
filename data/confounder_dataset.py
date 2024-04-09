@@ -32,12 +32,13 @@ class ConfounderDataset(Dataset):
         return self.y_array
 
     def create_LR_y(self):
+        print('CREATE LR Y')
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.LR_label_array = torch.ones(self.y_array.shape, device=device, dtype=torch.long) * 0
 
     def get_LR_label_array(self):
         if not hasattr(self, 'LR_label_array'):
-            self.create_LR_y()
+            return None
         return self.LR_label_array
 
     def update_LR_y(self, idx, new_y):
@@ -59,7 +60,8 @@ class ConfounderDataset(Dataset):
             if idx < len(classifier_group_array):
                 classifier_g = classifier_group_array[idx]
 
-        LR_y = self.get_LR_label_array()[idx]
+        LR_y = self.get_LR_label_array()
+        LR_y = -1 if not LR_y else LR_y[idx]
 
         up_weight = self.up_weight_array[idx]
 
