@@ -61,7 +61,7 @@ class ConfounderDataset(Dataset):
                 classifier_g = classifier_group_array[idx]
 
         LR_y = self.get_LR_label_array()
-        LR_y = -1 if not LR_y else LR_y[idx]
+        LR_y = -1 if LR_y is None else LR_y[idx]
 
         up_weight = self.up_weight_array[idx]
 

@@ -68,7 +68,7 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
 
     def get_LR_label_array(self):
         LR_y = self.dataset.get_LR_label_array()
-        LR_y = -1 if not LR_y else LR_y[self.indices]
+        LR_y = -1 if LR_y is None else LR_y[self.indices]
         return LR_y
 
     def update_LR_y(self, idx, new_y):

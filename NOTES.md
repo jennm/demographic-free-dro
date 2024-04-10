@@ -59,3 +59,12 @@ TODO:
 push changes
 finish the new get_groups function
 try on cmnist_hard
+
+
+TODO
+- remove true positive from training
+- train on subset
+- visualize classifier
+- use penultimate layer
+- save loss
+- apply umap to embeddings before training classifier

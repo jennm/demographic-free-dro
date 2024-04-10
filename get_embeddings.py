@@ -2,6 +2,8 @@ import torch
 
 from functools import partial
 from torch.utils.data import DataLoader
+import torch.nn as nn
+
 
 from torchvision.models.feature_extraction import get_graph_node_names
 from torchvision.models.feature_extraction import create_feature_extractor
@@ -9,7 +11,7 @@ from torchvision.models.feature_extraction import create_feature_extractor
 import numpy as np
 
 
-def collate_func(batch, feature_extractor):
+def collate_func(batch, feature_extractor, criterion):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     inputs = torch.stack([sample[0] for sample in batch]).to(device)
@@ -25,29 +27,18 @@ def collate_func(batch, feature_extractor):
 
     with torch.no_grad():
         embeddings = feature_extractor(inputs)
+        loss = criterion(embeddings[str(0)], labels).detach()
         # NOTE: inputs, embeddings will be saved on GPU not CPU
-
-        # if torch.all(LR_y == -1):
-        #     predicted = torch.argmax(embeddings[str(0)], dim=1)
-        #     misclassified = (predicted != labels).long()
-        #     LR_y = misclassified
-
-            # misclassified = torch.zeros(labels.shape, device=device)
-            # num_ones = int(0.5 * misclassified.size(0))
-            # indices = torch.randperm(misclassified.size(0))
-            # misclassified[indices[:num_ones]] = 1
-            # LR_y = misclassified.long()
-
 
     data = {'embeddings': embeddings, 'idx': data_idx, 
             'inputs': inputs, 'group': group, 'classifier_group' : classifier_group, 
-            'LR_targets': LR_y, 'actual_targets': labels}
+            'LR_targets': LR_y, 'actual_targets': labels, 'loss': loss}
 
     return data
 
 
 def create_dataloader(feature_extractor, dataset, sampler, shared_dl_args):
-    collate_fn = partial(collate_func, feature_extractor=feature_extractor)
+    collate_fn = partial(collate_func, feature_extractor=feature_extractor, criterion=nn.CrossEntropyLoss(reduction='none'))
     return DataLoader(dataset, **shared_dl_args, collate_fn=collate_fn, sampler=sampler)
 
 
@@ -65,6 +56,10 @@ def get_nodes(model, layers):
 
 def get_embeddings(loader_kwargs, model, layers):
     nodes = get_nodes(model, layers)
+    
+    if 0 not in layers: layers.append(0)
+    layers.sort()
+
     # TODO: move model to device in case we use model path that was saved when on GPU
     feature_extractor = create_feature_extractor(model, return_nodes=nodes)
     return feature_extractor
