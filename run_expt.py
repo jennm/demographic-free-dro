@@ -250,7 +250,7 @@ def main(args):
 
     if args.emb_to_groups:
         assert resume == True
-        group_counts = find_groups(data)
+        group_counts = find_groups(data,True)
         return
 
     logger.flush()
