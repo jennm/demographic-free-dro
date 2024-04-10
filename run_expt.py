@@ -41,7 +41,6 @@ def get_subset(
 
     sz = int(math.ceil(len(indices) * fraction))
     indices = indices[:sz]
-    # print('indices', indices[0], indices[-1])
     split = Subset(dataset, indices)
         
     # Wrap in DRODataset Objects
@@ -207,6 +206,7 @@ def main(args):
     if use_embeddings:
         model.eval()
         feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+        train_data.create_LR_y()
 
     train_loader = dro_dataset.get_loader(train_data,
                                           train=True,
