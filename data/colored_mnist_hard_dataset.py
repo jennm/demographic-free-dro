@@ -61,9 +61,17 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
                             + self.confounder_array).astype("int")
 
         if classifier_group_path:
-            group_info = torch.load('groups_from_classifiers_info_mnist_hard.pt')
-            self.classifier_group_array = group_info['group_array'].numpy()
+            npzfile = np.load('classifier_groups.npz')
+            group_info = npzfile['group_array']
+            # group_info = torch.load('classifier_groups.pt')
+            # self.classifier_group_array = group_info['group_array'].numpy()
+            self.classifier_group_array = group_info
+            print(self.classifier_group_array.shape)
             self.classifier_n_groups = self.classifier_group_array.shape[1]
+
+            # group_info = torch.load('groups_from_classifiers_info_mnist_hard.pt')
+            # self.classifier_group_array = group_info['group_array'].numpy()
+            # self.classifier_n_groups = self.classifier_group_array.shape[1]
         
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)

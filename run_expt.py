@@ -21,40 +21,13 @@ from train import train
 from data.folds import Subset, ConcatDataset
 
 from learned_visualizations import visualize
-from get_embeddings import get_embeddings
+from get_embeddings import get_embeddings, get_subset
 
 import torch.multiprocessing as mp
 
 from find_groups import find_groups
 
 from functools import partial
-
-# TODO: fix this
-def get_subset(
-    dataset,
-    seed=0,
-    fraction=0.2
-):
-    random = np.random.RandomState(seed)
-    indices = list(range(len(dataset)))
-    random.shuffle(indices)
-
-    sz = int(math.ceil(len(indices) * fraction))
-    indices = indices[:sz]
-    split = Subset(dataset, indices)
-        
-    # Wrap in DRODataset Objects
-    data = dro_dataset.DRODataset(
-        split,
-        process_item_fn=None,
-        n_groups=dataset.n_groups,
-        n_classes=dataset.n_classes,
-        group_str_fn=dataset.group_str,
-    )
-
-    print('NEW SIZE', len(indices))
-
-    return data
 
 
 def main(args):
@@ -108,7 +81,7 @@ def main(args):
 
     if args.shrink: # TODO: Fix this
         print('SHRINKING')
-        train_data, val_data, test_data = get_subset(train_data), get_subset(val_data), get_subset(test_data)
+        train_data, val_data, test_data = get_subset(train_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(val_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(test_data)
 
     #########################################################################
     ###################### Prepare data for our method ######################
@@ -202,33 +175,37 @@ def main(args):
         "persistent_workers": True
     }
 
-    feature_extractor = None
-    if use_embeddings:
+
+    if args.emb_to_groups:
+        assert resume == True
+        assert args.upweight_misclassified
+
         model.eval()
         feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
-        train_data.create_LR_y()
 
-    train_loader = dro_dataset.get_loader(train_data,
-                                          train=True,
-                                          reweight_groups=args.reweight_groups,
-                                          upweight_misclassified=aug_indices if args.upweight_misclassified else None,
-                                          feature_extractor=feature_extractor,
-                                          **loader_kwargs)
+        find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        return
 
-    val_loader = dro_dataset.get_loader(val_data,
-                                        train=False,
-                                        reweight_groups=None,
-                                        upweight_misclassified=None,
-                                        feature_extractor=feature_extractor,
-                                        **loader_kwargs)
 
-    if test_data is not None:
-        test_loader = dro_dataset.get_loader(test_data,
-                                             train=False,
-                                             reweight_groups=None,
-                                             upweight_misclassified=None,
-                                             feature_extractor=feature_extractor,
-                                             **loader_kwargs)
+    else:
+        train_loader = dro_dataset.get_loader(train_data,
+                                            train=True,
+                                            reweight_groups=args.reweight_groups,
+                                            upweight_misclassified=aug_indices if args.upweight_misclassified else None,
+                                            **loader_kwargs)
+
+        val_loader = dro_dataset.get_loader(val_data,
+                                            train=False,
+                                            reweight_groups=None,
+                                            upweight_misclassified=None,
+                                            **loader_kwargs)
+
+        if test_data is not None:
+            test_loader = dro_dataset.get_loader(test_data,
+                                                train=False,
+                                                reweight_groups=None,
+                                                upweight_misclassified=None,
+                                                **loader_kwargs)
 
     data = {}
     data["train_loader"] = train_loader
@@ -243,15 +220,10 @@ def main(args):
     if args.wandb:
         wandb.watch(model)
 
-    if args.learned_vis:
-        assert resume == True
-        visualize(data, args.vis_layer)
-        return
-
-    if args.emb_to_groups:
-        assert resume == True
-        group_counts = find_groups(data)
-        return
+    # if args.learned_vis:
+    #     assert resume == True
+    #     visualize(data, args.vis_layer)
+    #     return
 
     logger.flush()
 
