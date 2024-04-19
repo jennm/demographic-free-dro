@@ -251,6 +251,7 @@ def experiment(data_loader, desc):
     store_sub = []
     store_label = []
     store_data_idx = []
+    store_loss = []
 
     for batch in data_loader:
         last_layer_emb = batch['embeddings'][str(0)]
@@ -262,6 +263,8 @@ def experiment(data_loader, desc):
         store_sub.append(true_subclass)
         true_label = batch['actual_targets']
         store_label.append(true_label)
+        loss = batch['loss']
+        store_loss.append(loss)
 
         data_idx = batch['idx']
         store_data_idx.append(data_idx)
@@ -270,6 +273,7 @@ def experiment(data_loader, desc):
     store_pen = np.concatenate(store_pen)
     store_sub = np.concatenate(store_sub)
     store_label = np.concatenate(store_label)
+    store_loss = np.concatenate(store_loss)
     store_data_idx = np.concatenate(store_data_idx)
 
     print((np.argmax(store_last, axis=1) == store_label).sum() / len(store_label))
@@ -277,7 +281,7 @@ def experiment(data_loader, desc):
     # reducer = umap.UMAP()
     # store_pen = reducer.fit_transform(store_pen)
 
-    np.savez(f'cmnist_meta_{desc}.npz', last_layer=store_last, pen_layer=store_pen, subclass=store_sub, label=store_label, data_idx=store_data_idx)
+    np.savez(f'cmnist_meta_{desc}.npz', last_layer=store_last, pen_layer=store_pen, subclass=store_sub, label=store_label, loss=store_loss, data_idx=store_data_idx)
 
 
 ##############################################
