@@ -67,3 +67,7 @@ def log_data(data, logger):
             logger.write(
                 f'    {data["test_data"].group_str(group_idx)}: n = {data["test_data"].group_counts()[group_idx]:.0f}\n'
             )
+
+
+
+# FUCK

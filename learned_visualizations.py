@@ -1,4 +1,3 @@
-from torch.utils.tensorboard import SummaryWriter
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -11,14 +10,13 @@ from sklearn.manifold import TSNE
 import umap
 import numpy as np
 
-def visualize(embeddings, layer):
-    writer = SummaryWriter('runs/vis1')
-    train_embeddings = embeddings['train_loader']
-    
+def visualize(train_loader, feature_extractor, layer):
+    # writer = SummaryWriter('runs/vis1')
+
     all_embeddings = []
     all_images = []
     all_groups = []
-    for batch in train_embeddings:
+    for batch in train_loader:
         batch_embeddings = batch['embeddings'][str(layer)].cpu()
         all_embeddings.append(batch_embeddings)
         batch_images = batch['inputs']
@@ -29,8 +27,8 @@ def visualize(embeddings, layer):
     all_images = torch.cat(all_images)
     all_groups = torch.cat(all_groups)
 
-    writer.add_embedding(all_embeddings, label_img=all_images)
-    writer.close()
+    # writer.add_embedding(all_embeddings, label_img=all_images)
+    # writer.close()
 
     pca(all_embeddings, all_groups, layer)
     umap_(all_embeddings, all_groups, layer)

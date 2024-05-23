@@ -175,37 +175,32 @@ def main(args):
         "persistent_workers": True
     }
 
-
-    if args.emb_to_groups:
-        assert resume == True
-        assert args.upweight_misclassified
-
-        model.eval()
-        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
-
-        find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
-        return
-
-
-    else:
-        train_loader = dro_dataset.get_loader(train_data,
+    train_loader = dro_dataset.get_loader(train_data,
                                             train=True,
                                             reweight_groups=args.reweight_groups,
                                             upweight_misclassified=aug_indices if args.upweight_misclassified else None,
                                             **loader_kwargs)
 
-        val_loader = dro_dataset.get_loader(val_data,
+    val_loader = dro_dataset.get_loader(val_data,
                                             train=False,
                                             reweight_groups=None,
                                             upweight_misclassified=None,
                                             **loader_kwargs)
 
-        if test_data is not None:
-            test_loader = dro_dataset.get_loader(test_data,
+    if test_data is not None:
+        test_loader = dro_dataset.get_loader(test_data,
                                                 train=False,
                                                 reweight_groups=None,
                                                 upweight_misclassified=None,
                                                 **loader_kwargs)
+
+    if args.emb_to_groups:
+        model.eval()
+        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+        visualize(train_loader, feature_extractor, args.vis_layer)
+
+        # find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        return
 
     data = {}
     data["train_loader"] = train_loader
@@ -219,11 +214,6 @@ def main(args):
 
     if args.wandb:
         wandb.watch(model)
-
-    # if args.learned_vis:
-    #     assert resume == True
-    #     visualize(data, args.vis_layer)
-    #     return
 
     logger.flush()
 

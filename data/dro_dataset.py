@@ -119,11 +119,6 @@ def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs
             intersection_counts = (dataset._group_array.unsqueeze(0) == dataset._group_array.unsqueeze(1)).all(dim=2).sum(dim=1)
             weights = len(dataset) / intersection_counts
 
-            # min-max normalization of weights
-            # min_weight = torch.min(weights)
-            # max_weight = torch.max(weights)
-            # weights = (weights - min_weight) / (max_weight - min_weight)
-
         else:
             weights = group_weights[dataset._group_array] # _group_array comes from dataset.get_group_array(use_classifier_groups)
         # Replacement needs to be set to True, otherwise we'll run out of minority samples

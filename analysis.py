@@ -190,7 +190,6 @@ def print_accs(
 def process_df(train_df, val_df, test_df, n_groups):
     loss_metrics = []
     acc_metrics = []
-    print("n groups", n_groups)
     if type(n_groups) is list:
         off_set = 3
         for group_idx in range(max(n_groups)):  # 4 groups
@@ -205,15 +204,10 @@ def process_df(train_df, val_df, test_df, n_groups):
     # robust acc
     df_count = 0
     for df in [train_df, val_df, test_df]:
-        try:
-            print('hi')
-            df["robust_loss"] = np.max(df.loc[:, loss_metrics[0:n_groups[df_count % off_set]]], axis=1)
-            print('hii')
-            df["robust_acc"] = np.min(df.loc[:, acc_metrics[0:n_groups[df_count % off_set]]], axis=1)
-            df_count += 1
-        except:
-            pass
-
+        df["robust_loss"] = np.max(df.loc[:, loss_metrics[0:n_groups[df_count % off_set]]], axis=1)
+        non_zero_acc = df.loc[:, acc_metrics[0:1] + acc_metrics[2:n_groups[df_count % off_set]]]
+        df["robust_acc"] = np.min(non_zero_acc, axis=1)
+        df_count += 1
 
 if __name__ == "__main__":
     import argparse
@@ -250,8 +244,6 @@ if __name__ == "__main__":
         folder for folder in os.listdir(args.training_output_dir)
         if args.exp_substring == folder
     ]
-
-    print(runs)
 
     # Print robust val accuracies from downstream runs
     for run in runs:

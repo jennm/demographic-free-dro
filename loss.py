@@ -32,11 +32,12 @@ class LossComputer: # separate loss computer for train, val, test
         self.normalize_loss = normalize_loss
         self.btl = btl
 
-        self.n_groups = dataset.n_groups # TODO: Needs to look at right group array, I think this should be right?
+        self.n_groups = dataset.n_groups
         self.group_counts = dataset.group_counts().cuda()
+        self.avoid_nans_group_counts = self.group_counts + (self.group_counts == 0).float()
 
 
-        self.group_frac = self.group_counts / self.group_counts.sum()
+        self.group_frac = self.group_counts / self.avoid_nans_group_counts.sum()
         self.group_str = dataset.group_str # TODO: Check this
 
         if self.loss_type == "joint_dro":
@@ -97,7 +98,6 @@ class LossComputer: # separate loss computer for train, val, test
 
         else:
             assert self.loss_type == "erm"
-
             actual_loss = per_sample_losses.mean()
             weights = None
 
@@ -121,7 +121,7 @@ class LossComputer: # separate loss computer for train, val, test
         # add some adjustment dependent on group size to each group loss
         adjusted_loss = group_loss
         if torch.all(self.adj > 0):
-            adjusted_loss += self.adj / torch.sqrt(self.group_counts)
+            adjusted_loss += self.adj / torch.sqrt(self.avoid_nans_group_counts)
 
         # normalizes adjusted loss
         if self.normalize_loss:
@@ -133,7 +133,7 @@ class LossComputer: # separate loss computer for train, val, test
         self.adv_probs = self.adv_probs / (self.adv_probs.sum()) # normalizes values
 
         # dot product of group loss and adv_probs
-        # yields weigghted sum of losses
+        # yields weighted sum of losses
         robust_loss = group_loss @ self.adv_probs
 
         return robust_loss, self.adv_probs
@@ -141,7 +141,7 @@ class LossComputer: # separate loss computer for train, val, test
 # NOTE: should be correct regardless of use_classifier_groups
     def compute_robust_loss_btl(self, group_loss, group_count):
         adjusted_loss = self.exp_avg_loss + self.adj / torch.sqrt(
-            self.group_counts)
+            self.avoid_nans_group_counts)
         return self.compute_robust_loss_greedy(group_loss, adjusted_loss)
 
 # NOTE: should be correct regardless of use_classifier_groups
@@ -211,8 +211,10 @@ class LossComputer: # separate loss computer for train, val, test
         # avg group loss
         denom = self.processed_data_counts + group_count
         denom += (denom == 0).float()
+
         prev_weight = self.processed_data_counts / denom
         curr_weight = group_count / denom
+
         self.avg_group_loss = prev_weight * self.avg_group_loss + curr_weight * group_loss
 
         # avg group acc
@@ -291,12 +293,13 @@ class LossComputer: # separate loss computer for train, val, test
             f"Average sample loss: {self.avg_actual_loss.item():.3f}  \n")
         logger.write(f"Average acc: {self.avg_acc.item():.3f}  \n")
         for group_idx in range(self.n_groups):
+            root_count = torch.sqrt(self.group_counts)[group_idx]
             logger.write(
                 f"  {self.group_str(group_idx)}  "
                 f"[n = {int(self.processed_data_counts[group_idx])}]:\t"
                 f"loss = {self.avg_group_loss[group_idx]:.3f}  "
                 f"exp loss = {self.exp_avg_loss[group_idx]:.3f}  "
-                f"adjusted loss = {self.exp_avg_loss[group_idx] + self.adj[group_idx]/torch.sqrt(self.group_counts)[group_idx]:.3f}  "
+                f"adjusted loss = {self.exp_avg_loss[group_idx] + (0 if root_count == 0 else self.adj[group_idx]/root_count):.3f}  "
                 f"adv prob = {self.adv_probs[group_idx]:3f}   "
                 f"acc = {self.avg_group_acc[group_idx]:.3f}\n")
         logger.flush()
