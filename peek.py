@@ -35,35 +35,72 @@ import matplotlib.pyplot as plt
 
 #####################################################################################################################
 
-# checks that all color classes are given only assigned majority or minority color code
-# df = pd.read_csv('/scratch/09717/saloni/demographic-free-dro/coloredMNIST_HARD/data/metadata.csv')
-# for i, r in df.iterrows():
-#     target = np.where(r[2:7] == 1)[0][0]
-#     color = np.where(r[7:] == 1)[0][0]
-#     assert color == target or color == (target + 1) % 5
-#     assert sum(r[2:]) == 2
-
-#####################################################################################################################
-
 # sample imgs
-df = pd.read_csv('/scratch/09717/saloni/demographic-free-dro/coloredMNIST_HARD/data/metadata.csv')
-grouped_df = df.groupby(list(df.columns[2:]))
-sampled = grouped_df.apply(lambda x: x.sample(5, random_state=42))
+# df = pd.read_csv('/scratch/09717/saloni/demographic-free-dro/coloredMNIST_HARD/data/metadata.csv')
+# grouped_df = df.groupby(list(df.columns[2:]))
+# sampled = grouped_df.apply(lambda x: x.sample(5, random_state=42))
 
-num_groups = len(sampled) // 5
+# num_groups = len(sampled) // 5
 
-fig, axes = plt.subplots(nrows=num_groups, ncols=5, figsize=(15,12))
+# fig, axes = plt.subplots(nrows=num_groups, ncols=5, figsize=(15,12))
 
-for i in range(num_groups):
+# for i in range(num_groups):
+#     for j in range(5):
+#         f = sampled.iloc[i * 5 + j][1]
+#         image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
+#         img = plt.imread(image_path)
+#         axes[i][j].imshow(img)
+#         axes[i][j].axis('off')
+
+
+# plt.tight_layout()
+# plt.savefig('cmnist_med_sample_imgs.png')
+
+######################################################################################################################
+
+# df = pd.read_csv('/scratch/09717/saloni/demographic-free-dro/coloredMNIST_HARD/data/metadata.csv')
+
+# df['train'] = df['split'].apply(lambda x: True if x == 0 else False)
+# grouped = df.groupby('train')
+
+# fig, axes = plt.subplots(nrows=10, ncols=5, figsize=(15,12))
+
+# g = 0
+# for name, group in grouped:
+#     subgroup = group.groupby(list(df.columns[2:7]))
+#     sampled = subgroup.apply(lambda x: x.sample(5, random_state=42))
+#     for i in range(5):
+#         for j in range(5):
+#             f = sampled.iloc[i * 5 + j][1]
+#             image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
+#             img = plt.imread(image_path)
+
+#             axes[i * 2 + g][j].imshow(img)
+#             axes[i * 2 + g][j].axis('off')
+
+#     g += 1
+    
+# plt.tight_layout()
+# plt.savefig('cmnist_med_sample_imgs.png')
+
+####################################################################################################
+
+df = pd.read_csv('results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv')
+df = df[df['wrong_1_times'] == 1]
+
+sampled_df = df.sample(n=25, random_state=1)
+fig, axes = plt.subplots(nrows=5, ncols=5, figsize=(15,12))
+
+for i in range(5):
     for j in range(5):
-        f = sampled.iloc[i * 5 + j][1]
+        f = sampled_df.iloc[i * 5 + j][2]
         image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
         img = plt.imread(image_path)
+
         axes[i][j].imshow(img)
         axes[i][j].axis('off')
 
-
 plt.tight_layout()
-plt.savefig('cmnist_med_sample_imgs.png')
+plt.savefig('cmnist_hard_wrong_sample.png')
 
 print('done')

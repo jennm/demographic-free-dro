@@ -11,24 +11,16 @@ import umap
 import numpy as np
 
 def visualize(train_loader, feature_extractor, layer):
-    # writer = SummaryWriter('runs/vis1')
-
     all_embeddings = []
-    all_images = []
     all_groups = []
+
     for batch in train_loader:
-        batch_embeddings = batch['embeddings'][str(layer)].cpu()
-        all_embeddings.append(batch_embeddings)
-        batch_images = batch['inputs']
-        all_images.append(batch_images)
+        batch_embeddings = batch['embeddings'][str(layer)]
+        all_embeddings.append(torch.tensor(batch_embeddings))
         all_groups.append(torch.tensor(batch['group']))
 
     all_embeddings = torch.cat(all_embeddings)
-    all_images = torch.cat(all_images)
     all_groups = torch.cat(all_groups)
-
-    # writer.add_embedding(all_embeddings, label_img=all_images)
-    # writer.close()
 
     pca(all_embeddings, all_groups, layer)
     umap_(all_embeddings, all_groups, layer)
@@ -90,11 +82,3 @@ def tsne(all_embeddings, all_groups, layer):
     plt.xlabel('TSNE Dim 1')
     plt.ylabel('TSNE Dim 2')
     plt.savefig('TSNE.png')
-
-
-def visualize_LR():
-    pass
-
-
-def visualize_LR_tensorboard():
-    pass

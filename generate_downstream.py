@@ -92,7 +92,7 @@ def generate_downstream_commands(args):
 
     for method in methods:
         if method == "JTT":
-            up_weights = [20, 50, 100] 
+            up_weights = [50] # [20, 50, 100] # NOTE: changed
             loss_type = "jtt_fake_dro" if args.jtt_fake_dro else "erm"
             aug_col = args.aug_col
             confounder_name = args.confounder_name

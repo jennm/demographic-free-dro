@@ -25,7 +25,6 @@ def collate_func(batch, feature_extractor, criterion):
   
     inputs = np.stack([sample[0] for sample in batch])
     labels = np.array([sample[1] for sample in batch])
-    LR_y = np.array([sample[-2] for sample in batch])
 
     group = np.array([sample[2] for sample in batch])
     classifier_group = np.array([sample[-1] for sample in batch])
@@ -43,7 +42,7 @@ def collate_func(batch, feature_extractor, criterion):
     
     data = {'embeddings': embeddings, 'idx': data_idx, 
             'inputs': inputs, 'group': group, 'classifier_group' : classifier_group, 
-            'LR_targets': LR_y, 'actual_targets': labels, 'loss': loss}
+            'actual_targets': labels, 'loss': loss}
 
     return data
 
@@ -143,9 +142,6 @@ def get_upsampled_subset(
 # ignore_points corresponds to data_idx
 def get_emb_loader(dataset, upweight_misclassified, feature_extractor, train=False, ignore_points=None, version='full + sampler', use_classifier_groups=False, **kwargs):
     sampler = None
-
-    if upweight_misclassified is not None:
-        dataset.update_LR_y(upweight_misclassified, np.ones(len(upweight_misclassified), dtype=np.int64))
 
     # Full train set, reweight sampler to overrepresent misclassified points
     if version == 'full + sampler':

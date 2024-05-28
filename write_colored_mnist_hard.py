@@ -114,13 +114,17 @@ class ColoredMNIST(Dataset):
                 # May refactor this out as a separate function later
                 if self.train:
                     # pick this img's color: if i'm spurious, apply my assigned color, else choose a random color
+                    # color_ix = (ix if is_spurious[cix_] else
+                    #             np.random.choice([
+                    #                 x for x in np.arange(len(self.colors)) if x != ix])
+                    #                 )
+
+                    # if i'm spurious get my assigned color, else grab the next color
+                    # color_ix = (ix if is_spurious[cix_] else (ix + 1) % len(self.colors))
                     color_ix = (ix if is_spurious[cix_] else
                                 np.random.choice([
                                     x for x in np.arange(len(self.colors)) if x != ix])
                                     )
-
-                    # if i'm spurious get my assigned color, else grab the next color
-                    # color_ix = (ix if is_spurious[cix_] else (ix + 1) % len(self.colors))
                     
                     
                 else:
@@ -212,9 +216,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
                          "2": int(digit_class == 2), 
                          "3": int(digit_class == 3), 
                          "4": int(digit_class == 4), 
-                         "confounder": int(color_class == "C0"),
+                         "C0": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "C2": int(color_class == "C2"),
+                         "confounder": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }
@@ -231,9 +235,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
                          "2": int(digit_class == 2), 
                          "3": int(digit_class == 3), 
                          "4": int(digit_class == 4), 
-                         "confounder": int(color_class == "C0"),
+                         "C0": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "C2": int(color_class == "C2"),
+                         "confounder": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }
@@ -250,9 +254,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
                          "2": int(digit_class == 2), 
                          "3": int(digit_class == 3), 
                          "4": int(digit_class == 4), 
-                         "confounder": int(color_class == "C0"),
+                         "C0": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "C2": int(color_class == "C2"),
+                         "confounder": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }

@@ -31,17 +31,6 @@ class ConfounderDataset(Dataset):
     def get_label_array(self):
         return self.y_array
 
-    def create_LR_y(self):
-        self.LR_label_array = np.zeros(self.y_array.shape, dtype=np.int64)
-
-    def get_LR_label_array(self):
-        if not hasattr(self, 'LR_label_array'):
-            return None
-        return self.LR_label_array
-
-    def update_LR_y(self, idx, new_y):
-        self.LR_label_array[idx] = new_y
-
     def get_up_weight_array(self):
         return self.up_weight_array
 
@@ -57,9 +46,6 @@ class ConfounderDataset(Dataset):
             classifier_group_array = self.get_group_array(use_classifier_groups=True)
             if idx < len(classifier_group_array):
                 classifier_g = classifier_group_array[idx]
-
-        LR_y = self.get_LR_label_array()
-        LR_y = -1 if LR_y is None else LR_y[idx]
 
         up_weight = self.up_weight_array[idx]
 
@@ -85,7 +71,7 @@ class ConfounderDataset(Dataset):
                 img = img.view(-1)
             x = img
 
-        return x, y, g, up_weight, idx, LR_y, classifier_g
+        return x, y, g, up_weight, idx, classifier_g
 
     def get_splits(self, splits, train_frac=1.0, use_classifier_groups=False):
         subsets = {}

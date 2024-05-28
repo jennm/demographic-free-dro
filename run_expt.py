@@ -21,7 +21,7 @@ from train import train
 from data.folds import Subset, ConcatDataset
 
 from learned_visualizations import visualize
-from get_embeddings import get_embeddings, get_subset
+from get_embeddings import get_embeddings, get_subset, create_dataloader
 
 import torch.multiprocessing as mp
 
@@ -175,6 +175,16 @@ def main(args):
         "persistent_workers": True
     }
 
+    if args.emb_to_groups:
+        model.eval()
+        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+        train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
+
+        visualize(train_loader, feature_extractor, args.vis_layer)
+
+        # find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        return
+
     train_loader = dro_dataset.get_loader(train_data,
                                             train=True,
                                             reweight_groups=args.reweight_groups,
@@ -193,14 +203,6 @@ def main(args):
                                                 reweight_groups=None,
                                                 upweight_misclassified=None,
                                                 **loader_kwargs)
-
-    if args.emb_to_groups:
-        model.eval()
-        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
-        visualize(train_loader, feature_extractor, args.vis_layer)
-
-        # find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
-        return
 
     data = {}
     data["train_loader"] = train_loader
