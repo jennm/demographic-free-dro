@@ -88,6 +88,7 @@ def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs
         assert reweight_groups is None
         shuffle = False
         sampler = None
+
     elif upweight_misclassified is not None:
         print('UPWEIGHT MISCLASSIFIED')
         misclassified_count = len(upweight_misclassified)
@@ -96,6 +97,7 @@ def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs
         weights = [correct_wrong_weights[1] if i in upweight_misclassified else correct_wrong_weights[0] for i in range(len(dataset))]
         shuffle = False
         sampler = WeightedRandomSampler(weights, len(dataset), replacement=True)
+
     elif not reweight_groups:  # Training but not reweighting
         shuffle = True
         sampler = None
@@ -105,7 +107,10 @@ def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs
         # to a reweighted ERM (weighted average where each (y,c) group has equal weight) .
         # When the --robust flag is set, reweighting does not change the loss function
         # since the minibatch is only used for mean gradient estimation for each group separately
+
         group_weights = torch.where(dataset._group_counts == 0, torch.tensor(0), len(dataset) / dataset._group_counts)
+
+        # counts identical group membership rows
         if len(dataset._group_array.shape) > 1:
             intersection_counts = (dataset._group_array.unsqueeze(0) == dataset._group_array.unsqueeze(1)).all(dim=2).sum(dim=1)
             weights = len(dataset) / intersection_counts

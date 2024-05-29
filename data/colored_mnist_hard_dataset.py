@@ -61,18 +61,30 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
                             + self.confounder_array).astype("int")
 
         if classifier_group_path:
-            npzfile = np.load('classifier_groups.npz')
-            group_info = npzfile['group_array']
-            # group_info = torch.load('classifier_groups.pt')
-            # self.classifier_group_array = group_info['group_array'].numpy()
-            self.classifier_group_array = group_info
-            print(self.classifier_group_array.shape)
-            self.classifier_n_groups = self.classifier_group_array.shape[1]
-
-            # group_info = torch.load('groups_from_classifiers_info_mnist_hard.pt')
-            # self.classifier_group_array = group_info['group_array'].numpy()
+            # npzfile = np.load('classifier_groups.npz')
+            # group_info = npzfile['group_array']
+            # self.classifier_group_array = group_info
             # self.classifier_n_groups = self.classifier_group_array.shape[1]
-        
+
+            aug_df = pd.read_csv('results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv')
+            self.misclassified = aug_df['wrong_1_times'].values
+            print(self.misclassified.shape)
+
+            self.classifier_n_groups = 4
+            self.classifier_group_array = np.stack(
+                [
+                np.array([  0, 
+                            1 if self.y_array[i] else -1, 
+                            2 if self.confounder_array[i] else -1,
+                            3 if i < 54000 and self.misclassified[i] else -1
+                        ]) 
+                for i in range(len(self.y_array))
+                ]
+            )
+
+            self.classifier_group_array = torch.tensor(self.classifier_group_array)
+
+
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)
         )

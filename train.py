@@ -320,7 +320,6 @@ def train(
             csv_name=csv_name,
             wandb_group="val",
             wandb=wandb,
-            use_classifier_groups=use_classifier_groups
         )
 
         # Test set; don't print to avoid peeking

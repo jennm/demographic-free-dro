@@ -147,7 +147,7 @@ def get_fold(
 
             valid_indices = indices[i * valid_size:(i + 1) * valid_size]
             print("len(valid_indices)", len(valid_indices))
-            valid_split = Subset(dataset, valid_indices, use_classifier_groups)
+            valid_split = Subset(dataset, valid_indices, False) # NOTE: changed to always False
             if sweep_counter == 0 and i == 0:
                 print("train_split", train_split, "valid_split", valid_split)
             folds.append((train_split, valid_split))
@@ -171,11 +171,11 @@ def get_fold(
         val_data = dro_dataset.DRODataset(
             val_data_subset,
             process_item_fn=None,
-            n_groups=dataset.get_n_groups(use_classifier_groups),
+            n_groups=dataset.get_n_groups(use_classifier_groups=False),
             n_classes=dataset.n_classes,
-            group_str_fn=partial(dataset.group_str, use_classifier_groups=use_classifier_groups),
-            use_classifier_groups=use_classifier_groups
-        )
+            group_str_fn=partial(dataset.group_str, use_classifier_groups=False),
+            use_classifier_groups=False
+        ) # NOTE: changed so val does NOT use classifier groups
 
         return train_data, val_data
     else:

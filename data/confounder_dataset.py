@@ -87,8 +87,8 @@ class ConfounderDataset(Dataset):
                 indices = np.sort(
                     np.random.permutation(indices)[:num_to_retain])
             
-            subsets[split] = Subset(self, indices, (use_classifier_groups and split != 'test'))
-            # NOTE: the test set should NEVER use the classifier groups
+            subsets[split] = Subset(self, indices, (use_classifier_groups and split == 'train'))
+            # NOTE: the val and test set should NEVER use the classifier groups
 
         return subsets
 

@@ -21,7 +21,7 @@ from train import train
 from data.folds import Subset, ConcatDataset
 
 from learned_visualizations import visualize
-from get_embeddings import get_embeddings, get_subset, create_dataloader
+from get_embeddings import get_embeddings, create_dataloader
 
 import torch.multiprocessing as mp
 
@@ -29,6 +29,30 @@ from find_groups import find_groups
 
 from functools import partial
 
+def get_subset(
+    dataset,
+    seed=0,
+    fraction=0.2,
+    use_classifier_groups=False
+):
+    random = np.random.RandomState(seed)
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    sz = int(math.ceil(len(indices) * fraction))
+    indices = indices[:sz]
+    split = Subset(dataset, indices)
+
+    data = dro_dataset.DRODataset(
+        split,
+        process_item_fn=None,
+        n_groups=dataset.n_groups,
+        n_classes=dataset.n_classes,
+        group_str_fn=partial(dataset.group_str, use_classifier_groups=use_classifier_groups),
+        use_classifier_groups=use_classifier_groups
+    )
+
+    return data
 
 def main(args):
     if args.wandb:
@@ -81,7 +105,7 @@ def main(args):
 
     if args.shrink: # TODO: Fix this
         print('SHRINKING')
-        train_data, val_data, test_data = get_subset(train_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(val_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(test_data)
+        train_data, val_data, test_data = get_subset(train_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(val_data), get_subset(test_data) # changed so val does not use classifier groups
 
     #########################################################################
     ###################### Prepare data for our method ######################
@@ -91,7 +115,8 @@ def main(args):
     assert not args.fold or not args.up_weight
 
     # Fold passed. Use it as train and valid.
-    if args.fold:
+    if args.fold: # NOTE: this should not get used
+        print('ARGS FOLD')
         train_data, val_data = folds.get_fold(
             train_data,
             args.fold,
@@ -178,11 +203,11 @@ def main(args):
     if args.emb_to_groups:
         model.eval()
         feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
-        train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
 
-        visualize(train_loader, feature_extractor, args.vis_layer)
+        # train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
+        # visualize(train_loader, feature_extractor, args.vis_layer)
 
-        # find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        find_groups(train_data, val_data, None, feature_extractor, use_classifier_groups=False, **loader_kwargs)
         return
 
     train_loader = dro_dataset.get_loader(train_data,
