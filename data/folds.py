@@ -18,7 +18,6 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
 
     NOTE: torch.utils.dataset.Subset loses original indexing.
     """
-    # NOTE: not the source of bug
     def __init__(self, dataset, indices, use_classifier_groups=False):
         self.dataset = dataset
         self.indices = indices
@@ -28,14 +27,12 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
     def update_up_weight_array(self, new_up_weight_array):
         self.up_weight_array = self.dataset.update_up_weight_array(new_up_weight_array)
 
-    # NOTE: not the source of bug
     def __getitem__(self, idx):
         return self.dataset[self.indices[idx]]
 
     def __len__(self):
         return len(self.indices)
 
-    # NOTE: not the source of bug
     def get_group_array(self, re_evaluate=True, use_classifier_groups=False): # TODO: make sure looks at right group_array
         """Return an array [g_x1, g_x2, ...]"""
         # setting re_evaluate=False helps us over-write the group array if necessary (2-group DRO)
@@ -46,7 +43,6 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
         else:
             return self.group_array
 
-    # NOTE: not the source of bug
     def get_label_array(self, re_evaluate=True):
         if re_evaluate:
             label_array = self.dataset.get_label_array()[self.indices]
@@ -58,12 +54,10 @@ class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the unde
     def update_y(self, idx, new_y):
         self.dataset.update_y(idx, new_y)
 
-    # NOTE: not the source of bug
     def get_n_groups(self, use_classifier_groups):
         return self.dataset.get_n_groups(use_classifier_groups)
 
 
-# NOTE: not the source of bug
 class ConcatDataset(torch.utils.data.ConcatDataset):
     """
     Concate datasets
@@ -89,7 +83,6 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
             label_array += list(np.squeeze(dataset.get_label_array()))
         return label_array
 
-# NOTE: not the source of bug
 def get_fold(
     dataset,
     fold=None,

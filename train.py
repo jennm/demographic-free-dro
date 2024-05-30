@@ -194,11 +194,16 @@ def train(
 
     # process generalization adjustment stuff
     adjustments = [float(c) for c in args.generalization_adjustment.split(",")]
-    assert len(adjustments) in (1, dataset["train_data"].n_groups)
+    # assert len(adjustments) in (1, dataset["train_data"].n_groups)
     if len(adjustments) == 1:
-        adjustments = np.array(adjustments * dataset["train_data"].n_groups)
+        train_adjustments = np.array(adjustments * dataset["train_data"].n_groups)
+        val_adjustments = np.array(adjustments * dataset["val_data"].n_groups)
+        test_adjustments = np.array(adjustments * dataset["test_data"].n_groups)
     else:
-        adjustments = np.array(adjustments)
+        # NOTE: shouldn't apply to us hopefully
+        train_adjustments = np.array(adjustments)
+        val_adjustments = train_adjustments
+        test_adjustments = train_adjustments
 
     # TODO: fix this to account for classifier groups
     train_loss_computer = LossComputer(
@@ -207,7 +212,7 @@ def train(
         dataset=dataset["train_data"],
         alpha=args.alpha,
         gamma=args.gamma,
-        adj=adjustments,
+        adj=train_adjustments,
         step_size=args.robust_step_size,
         normalize_loss=args.use_normalized_loss,
         btl=args.btl,
@@ -299,7 +304,7 @@ def train(
             dataset=dataset["val_data"],
             alpha=args.alpha,
             gamma=args.gamma,
-            adj=adjustments,
+            adj=val_adjustments,
             step_size=args.robust_step_size,
             normalize_loss=args.use_normalized_loss,
             btl=args.btl,
@@ -331,7 +336,7 @@ def train(
                 step_size=args.robust_step_size,
                 alpha=args.alpha,
                 gamma=args.gamma,
-                adj=adjustments,
+                adj=test_adjustments,
                 normalize_loss=args.use_normalized_loss,
                 btl=args.btl,
                 min_var_weight=args.minimum_variational_weight,

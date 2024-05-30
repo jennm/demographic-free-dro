@@ -207,7 +207,8 @@ def main(args):
         # train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
         # visualize(train_loader, feature_extractor, args.vis_layer)
 
-        find_groups(train_data, val_data, None, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        # find_groups(train_data, val_data, None, feature_extractor, use_classifier_groups=False, **loader_kwargs)
+        find_groups()
         return
 
     train_loader = dro_dataset.get_loader(train_data,
