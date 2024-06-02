@@ -61,7 +61,7 @@ for i in range(num_sub_groups + 1):
 
 
 
-categories = [i for i in range(1,num_sub_groups + 2)]
+categories = [i for i in range(1,num_sub_groups)]
 values1 = values[0]
 values2 = values[1]
 values3 = values[2]
@@ -73,8 +73,16 @@ width = 0.5
 
 fig, ax = plt.subplots()
 color_arr= ['lightblue', 'orange', 'yellow', 'green']
+bottom = np.zeros(num_sub_groups + 1)
+print(values)
+print(values[0])
+print(bottom)
 for i in range(num_sub_groups):
-  ax.barh(categories, values[i], color=color_arr[i % 4], label=f"Group {i+1}")
+  bottom += np.array(values[i])
+  print(bottom)
+  ax.barh(categories, bottom[0:2], width, color=color_arr[i % 4], label=f"Group {i+1}")
+  
+  
 
 
 ax.set_xlabel('Percentage of group')
