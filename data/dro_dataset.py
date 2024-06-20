@@ -117,6 +117,7 @@ def get_loader(dataset, train, reweight_groups, upweight_misclassified, **kwargs
 
         else:
             weights = group_weights[dataset._group_array] # _group_array comes from dataset.get_group_array(use_classifier_groups)
+        
         # Replacement needs to be set to True, otherwise we'll run out of minority samples
         sampler = WeightedRandomSampler(weights,
                                         len(dataset),

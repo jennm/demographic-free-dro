@@ -60,13 +60,52 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
         self.group_array = (self.y_array * (self.n_groups / 2)
                             + self.confounder_array).astype("int")
 
+        ##########################################################################
+        # True Groups
+        df = pd.read_csv(
+            os.path.join(self.root_dir, "data", metadata_csv_name)
+        )
+        grouped = df.groupby(list(df.columns[2:12]))
+        # i = 0
+        # for name, group in grouped:
+        #     print(f'Index {i} : Group: {name}')
+        #     print()
+        #     i += 1
+        df_grouped = grouped.ngroup().reset_index(name='group_number')
+        self.group_array = np.array(df_grouped['group_number'].tolist())
+        self.n_groups = 25
+
+        ##########################################################################
+
         if classifier_group_path:
             npzfile = np.load('classifier_groups.npz')
             group_info = npzfile['group_array']
 
-            self.classifier_group_array = group_info
-            self.classifier_n_groups = self.classifier_group_array.shape[1]
+            # self.classifier_group_array = group_info
+            # # self.classifier_n_groups = self.classifier_group_array.shape[1]
+            # print('DEBUG', min(group_info), max(group_info), set(group_info))
+            # # self.classifier_group_array = self.group_array
+            # self.classifier_n_groups = 25 # len(set(self.classifier_group_array))
 
+            ###################################################################
+            # FULL INTERSECTION CODE
+
+            group_info = np.where(group_info == -1, 0, 1)
+
+            def bin_to_dec(row):
+                return int(''.join(row.astype(str)), 2)
+            
+            flat_groups = np.apply_along_axis(bin_to_dec, 1, group_info)
+            remap = {g:i for i, g in enumerate(set(flat_groups))}
+
+            print(remap)
+
+            def _remap(k): return remap[k]
+            self.classifier_group_array = np.vectorize(_remap)(flat_groups)
+            self.classifier_n_groups = len(remap)
+
+            ###################################################################
+            # SANITY CHECK CODE
             # aug_df = pd.read_csv('results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv')
             # self.misclassified = aug_df['wrong_1_times'].values
 

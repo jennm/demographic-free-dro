@@ -49,7 +49,7 @@ def find_groups():
     curr_group_id = len(groups)
 
     # while criteria
-    while curr_group_id < 2 and np.sum(misclassified[subsample_indices]) > 0:
+    while curr_group_id < 3 and np.sum(misclassified[subsample_indices]) > 0:
         # train classifier
         trained_model = train_classifier(embeddings[subsample_indices], misclassified[subsample_indices])
         learned_group = trained_model.predict(embeddings)
@@ -83,10 +83,10 @@ def find_groups():
         curr_group_id += 1
     
     print('# Learned Groups:', len(groups.keys()))
+    print('Learned Group Ids:', groups.keys())
 
     # write classifier group file
     save_idx = list(groups.keys())
-    print(save_idx)
 
     save_idx.sort()
     store_groups = [np.array(groups[i]) for i in save_idx]
@@ -109,21 +109,7 @@ def find_groups():
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def __find_groups(train_data, val_data, aug_indices, feature_extractor, use_classifier_groups=False, num_epochs=5, k=0, max_iter=4, min_group=100, groups=None, **loader_kwargs):
+def __find_groups(train_data, val_data, feature_extractor, **loader_kwargs):
     train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
     val_loader = create_dataloader(feature_extractor, val_data, None, loader_kwargs)
 
@@ -165,5 +151,11 @@ def experiment(data_loader, desc):
     store_data_idx = np.concatenate(store_data_idx)
 
     print((np.argmax(store_pred, axis=1) == store_label).sum() / len(store_label))
+
+    misclassified = np.argmax(store_pred, axis=1) != store_label
+    print(misclassified.sum())
+
+    print(store_label.sum())
+    print(np.argmax(store_pred, axis=1).sum())
 
     np.savez(f'cmnist_meta_{desc}.npz', predictions=store_pred, embeddings=store_emb, subclass=store_sub, label=store_label, loss=store_loss, data_idx=store_data_idx)

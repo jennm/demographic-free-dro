@@ -88,19 +88,75 @@ import matplotlib.pyplot as plt
 df = pd.read_csv('results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv')
 df = df[df['wrong_1_times'] == 1]
 
-sampled_df = df.sample(n=25, random_state=1)
-fig, axes = plt.subplots(nrows=5, ncols=5, figsize=(15,12))
+# sampled_df = df.sample(n=25, random_state=1)
+# fig, axes = plt.subplots(nrows=5, ncols=5, figsize=(15,12))
 
-for i in range(5):
-    for j in range(5):
-        f = sampled_df.iloc[i * 5 + j][2]
-        image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
-        img = plt.imread(image_path)
+# for i in range(5):
+#     for j in range(5):
+#         f = sampled_df.iloc[i * 5 + j][2]
+#         image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
+#         img = plt.imread(image_path)
 
-        axes[i][j].imshow(img)
-        axes[i][j].axis('off')
+#         axes[i][j].imshow(img)
+#         axes[i][j].axis('off')
 
-plt.tight_layout()
-plt.savefig('cmnist_hard_wrong_sample.png')
+# plt.tight_layout()
+# plt.savefig('cmnist_hard_wrong_sample.png')
+
+print('# Misclassified Points in Training Set:', len(df))
+misclassified_groups = df.groupby(list(df.columns[3:13]))
+print(df.columns[3:13].tolist())
+
+minor_count = 0
+minor_members = []
+for _, group in misclassified_groups:
+    group_size = len(group)
+    example_row = group.iloc[0][3:13].tolist()
+    print(f'Group: {example_row}; Count: {group_size}')
+
+    a = [index for index, value in enumerate(example_row) if value == 1]
+    if a[1] != a[0] + 5: 
+        minor_count += 1
+        minor_members.append(group_size)
+
+sampled = misclassified_groups.apply(lambda x: x.sample(5, random_state=42))
+num_groups = len(sampled) // 5
+
+print('# Minority Groups Among Misclassified Points / # Total Groups:', minor_count, '/', num_groups)
+print('Minority Group Counts Among Misclassified Points:', minor_members)
+print('Total Minority Group Points Among Misclassified Points:', sum(minor_members))
+print('Ratio of Minority Group Points Among Misclassified Points:', sum(minor_members) / len(df))
+
+# df['spurious'] = (df['target'] == df['confounder'])
+# print(np.sum(df['spurious']))
+print('====================================================================================')
+merged_csv = pd.read_csv('results/ColoredMNIST_HARD/ColoredMNIST_HARD_TEST/train_downstream_ERM_upweight_0_epochs_5_lr_0.001_weight_decay_0.0001/final_epoch1/metadata_aug.csv')
+merged_csv['spurious'] = (merged_csv['target'] == 1) & (merged_csv['confounder'] == 1)
+print('# Points in Minority Group of Interest:', np.sum(merged_csv['spurious']))
+merged_csv["our_spurious"] = merged_csv["spurious"] & merged_csv["wrong_1_times"]
+print('# Misclassified Points Among Minority Group of Interest:', np.sum(merged_csv['our_spurious']))
+
+spur_precision = np.sum(
+            (merged_csv[f"wrong_1_times"] == 1) & (merged_csv["spurious"] == 1)
+        ) / np.sum((merged_csv[f"wrong_1_times"] == 1))
+print("Spurious precision", spur_precision)
+spur_recall = np.sum(
+        (merged_csv[f"wrong_1_times"] == 1) & (merged_csv["spurious"] == 1)
+    ) / np.sum((merged_csv["spurious"] == 1))
+print("Spurious recall", spur_recall)
+
+# fig, axes = plt.subplots(nrows=num_groups, ncols=5, figsize=(15,12))
+
+# for i in range(num_groups):
+#     for j in range(5):
+#         f = sampled.iloc[i * 5 + j][2]
+#         image_path = 'coloredMNIST_HARD/data/colored_mnist_imgs' + '/' + f
+#         img = plt.imread(image_path)
+
+#         axes[i][j].imshow(img)
+#         axes[i][j].axis('off')
+
+# plt.tight_layout()
+# plt.savefig('cmnist_hard_all_wrong_groups_sample.png')
 
 print('done')

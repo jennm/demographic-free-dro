@@ -25,7 +25,11 @@ from get_embeddings import get_embeddings, create_dataloader
 
 import torch.multiprocessing as mp
 
-from find_groups import find_groups
+from find_groups import find_groups, __find_groups
+from george import george_find_groups
+from breakdown import breakdown
+from loss_binning import loss_binning
+from neighborhood_exploration import neighborhood_exploration
 
 from functools import partial
 
@@ -201,14 +205,17 @@ def main(args):
     }
 
     if args.emb_to_groups:
-        model.eval()
-        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+        # model.eval()
+        # feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
 
         # train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
         # visualize(train_loader, feature_extractor, args.vis_layer)
-
-        # find_groups(train_data, val_data, None, feature_extractor, use_classifier_groups=False, **loader_kwargs)
-        find_groups()
+        # __find_groups(train_data, val_data, feature_extractor, **loader_kwargs)
+        # find_groups()
+        # george_find_groups()
+        # breakdown()
+        # loss_binning()
+        neighborhood_exploration()
         return
 
     train_loader = dro_dataset.get_loader(train_data,
