@@ -2,8 +2,6 @@ import os, csv
 import argparse
 import pandas as pd
 import torch
-import torch.nn as nn
-import torchvision
 from tqdm import tqdm
 import numpy as np
 import wandb
@@ -30,6 +28,7 @@ from george import george_find_groups
 from breakdown import breakdown
 from loss_binning import loss_binning
 from neighborhood_exploration import neighborhood_exploration
+from fair_pca import experiment
 
 from functools import partial
 
@@ -215,7 +214,8 @@ def main(args):
         # george_find_groups()
         # breakdown()
         # loss_binning()
-        neighborhood_exploration()
+        # neighborhood_exploration()
+        experiment()
         return
 
     train_loader = dro_dataset.get_loader(train_data,
