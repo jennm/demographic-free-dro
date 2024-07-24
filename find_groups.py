@@ -109,12 +109,14 @@ def find_groups():
 
 
 
-def __find_groups(train_data, val_data, feature_extractor, **loader_kwargs):
+def __find_groups(train_data, val_data, test_data, feature_extractor, **loader_kwargs):
     train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
     val_loader = create_dataloader(feature_extractor, val_data, None, loader_kwargs)
+    test_loader = create_dataloader(feature_extractor, test_data, None, loader_kwargs)
 
-    experiment(train_loader, 'train')
-    experiment(val_loader, 'val')
+    experiment(train_loader, 'train_last_epoch')
+    experiment(val_loader, 'val_last_epoch')
+    experiment(test_loader, 'test_last_epoch')
 
 def experiment(data_loader, desc):
     store_pred = []

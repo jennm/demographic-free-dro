@@ -72,7 +72,7 @@ def prepare_confounder_data(args, train, return_full_dataset=False):
         return DRODataset(
             full_dataset,
             process_item_fn=None,
-            n_groups=full_dataset.get_n_groups(args.classifier_group_path != '' and split == 'train'),
+            n_groups=full_dataset.get_n_groups(args.classifier_group_path != ''),
             n_classes=full_dataset.n_classes,
             group_str_fn=partial(full_dataset.group_str, use_classifier_groups=(args.classifier_group_path != '')),
             use_classifier_groups=(args.classifier_group_path != '')

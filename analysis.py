@@ -121,7 +121,7 @@ def print_accs(
         if type(group_counts) is list:
             group_count = max(group_counts)
         else:
-            group_count = xgroup_counts
+            group_count = group_counts
         for i in range(group_count):
             metrics += [(f"group {i} acc", f"avg_acc_group:{i}")]
 
