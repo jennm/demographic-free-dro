@@ -379,7 +379,7 @@ if __name__ == "__main__":
     parser.add_argument("--show_progress", default=False, action="store_true")
     parser.add_argument("--log_dir", default="./logs")
     parser.add_argument("--log_every", default=50, type=int)
-    parser.add_argument("--save_step", type=int, default=10)
+    parser.add_argument("--save_step", type=int, default=1)
     parser.add_argument("--save_best", action="store_true", default=True)
     parser.add_argument("--save_last", action="store_true", default=True)
     parser.add_argument("--use_bert_params", type=int, default=1)

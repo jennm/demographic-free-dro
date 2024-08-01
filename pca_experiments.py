@@ -6,6 +6,9 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from scipy.spatial.distance import cdist, pdist, squareform
+from sklearn.metrics.pairwise import cosine_similarity
+
+from fair_k_pca import get_fair_subspace, get_fair_subspace_MANUAL_2_GROUPS, get_fair_subspace_MANUAL_N_GROUPS
 
 def unpack_data(part):
     train_npz = np.load(f'cmnist_meta_{part}.npz')
@@ -86,13 +89,18 @@ def experiment():
     plt.savefig('PCA_experiment.png')
 
 def experiment2():
-# load data
-    _, embeddings, subclasses, _, _, _ = unpack_data('train')
-    scaler = StandardScaler()
-    embeddings = scaler.fit_transform(embeddings)
+    # load data
+    _, embeddings, subclasses, _, _, _ = unpack_data('train_17_epoch')
+    _, test_embeddings, test_subclasses, _, _, _ = unpack_data('test_17_epoch')
 
-    majority_subclass = 1
-    minority_subclass = 3
+    # scaler = StandardScaler()
+    # embeddings = scaler.fit_transform(embeddings)
+
+    majority_subclass = 18 # red ones
+    minority_subclass = 19 # green ones
+
+    maj2 = 8 # red threes
+    min2 = 9 # green threes
 
     sample_size = 100
 
@@ -100,9 +108,17 @@ def experiment2():
     G_2 = embeddings[subclasses == minority_subclass][:sample_size]
     G = np.concatenate((G_1, G_2), axis=0)
 
-    A = compute_covariance(G)
+    G_1_test = test_embeddings[test_subclasses == majority_subclass][:sample_size]
+    G_2_test = test_embeddings[test_subclasses == minority_subclass][:sample_size]
+    G_test = np.concatenate((G_1_test, G_2_test), axis=0)
 
-    eigenvalues, eigenvectors = get_real_eig(A)
+    G_3 = embeddings[subclasses == maj2][:sample_size]
+    G_4 = embeddings[subclasses == min2][:sample_size]
+    G2 = np.concatenate((G_3, G_4))
+
+    A = compute_covariance(G)
+    # A2 = compute_covariance(G2)
+    _, eigenvectors = get_real_eig(A)
 
     variances_1 = []
     variances_2 = []
@@ -117,11 +133,11 @@ def experiment2():
     x = list(range(len(eigenvectors)))
 
     std_dev = np.std(variances_diffs)
-    print('std before:', std_dev)
+    # print('std before:', std_dev)
 
-    plt.scatter(x, variances_1)
-    plt.scatter(x, variances_2)
-    plt.savefig('variance_comparison.png')
+    # plt.scatter(x, variances_1)
+    # plt.scatter(x, variances_2)
+    # plt.savefig('variance_comparison.png')
 
     tolerance = std_dev / 10
 
@@ -142,65 +158,45 @@ def experiment2():
         u_i = eigenvectors[:, idx].reshape((D, 1))
         P += (u_i @ u_i.T)
 
-    data = {
-        'subclass': ['red 1s'] * 100 + ['blue 1s'] * 100,
-    }
-    df = pd.DataFrame(data)
+    # P = get_fair_subspace(embeddings, subclasses, 50, list(range(25)))
+    # P = get_fair_subspace_MANUAL_N_GROUPS(list(range(25)), embeddings, subclasses)
 
-    projected_data = G.dot(P)
+    # data = {
+    #     'subclass': ['red 1s'] * 100 + ['blue 1s'] * 100,
+    # }
+    # df = pd.DataFrame(data)
 
-    G_proj_bar = projected_data.mean(axis=1, keepdims=True)
-    G_proj_centered = projected_data - G_proj_bar
-    A_proj = G_proj_centered.T @ G_proj_centered
+    # projected_data = G.dot(P)
+    # projected_data2 = G2.dot(P)
 
-    pca = PCA(n_components=2)
-    u_proj = pca.fit_transform(A_proj)
 
-    viz_projected_data = G_proj_centered.dot(u_proj)
+    # A_proj = compute_covariance(projected_data)
+    # u_proj = np.linalg.eigh()[:, :2]
+    # viz_projected_data = projected_data.dot(u_proj)
 
-    pca_df = pd.DataFrame(data=viz_projected_data, columns=['PC1', 'PC2'])
-    pca_df = pd.concat([pca_df, df[['subclass']]], axis=1)
+    # A_proj2 = compute_covariance(projected_data2)
+    # u_proj2 = np.linalg.eigh()[:, :2]
+    # viz_projected_data2 = projected_data2.dot(u_proj2)
 
-    plt.figure(figsize=(10, 7))
-    sns.scatterplot(x='PC1', y='PC2', hue='subclass', data=pca_df, s=100)
-    plt.title('PCA After Projecting Out Spurious Directions')
-    plt.savefig('PCA_experiment2.png')
+
+    # pca_df = pd.DataFrame(data=viz_projected_data, columns=['PC1', 'PC2'])
+    # pca_df = pd.concat([pca_df, df[['subclass']]], axis=1)
+
+    # plt.figure(figsize=(10, 7))
+    # sns.scatterplot(x='PC1', y='PC2', hue='subclass', data=pca_df, s=100)
+    # plt.title('PCA After Projecting Out Spurious Directions')
+    # plt.savefig('PCA_experiment2.png')
 
     print('Before - Intra G1:', intra_group_distance(G_1), 'Intra G2:', intra_group_distance(G_2), 'Inter:', inter_group_distance(G_1, G_2))
     print('After - Intra G1:', intra_group_distance(G_1.dot(P)), 'Intra G2:', intra_group_distance(G_2.dot(P)), 'Inter:', inter_group_distance(G_1.dot(P), G_2.dot(P)))
 
-def experiment3():
-    _, embeddings, subclasses, _, _, _ = unpack_data('train')
-    scaler = StandardScaler()
-    embeddings = scaler.fit_transform(embeddings)
+    # print('Before - Intra G1 Test:', intra_group_distance(G_1_test), 'Intra G2 test:', intra_group_distance(G_2_test), 'Inter:', inter_group_distance(G_1_test, G_2_test))
+    # print('After - Intra G1 test:', intra_group_distance(G_1_test.dot(P)), 'Intra G2 test:', intra_group_distance(G_2_test.dot(P)), 'Inter:', inter_group_distance(G_1_test.dot(P), G_2_test.dot(P)))
 
-    G = embeddings
-    A = compute_covariance(G)
-
-    eigenvalues, eigenvectors = np.linalg.eigh(A)
-    eigenvectors = eigenvectors[:, ::-1]
-
-    print(eigenvalues)
-
-    # traces = []
-    # d = len(eigenvectors)
-    # for i in range(d):
-    #     e = eigenvectors[:, i]
-    #     traces.append(e.T @ A @ e)
-    
-    # traces = traces / sum(traces) * 100
-
-    # print(sorted(traces, reverse=True))
-    # print(sum(traces))
-
-    # pca = PCA()
-    # U = pca.fit_transform(A)
-    # print([f'{num*100:.2f}' for num in pca.explained_variance_ratio_])
-
-    # print(U.shape)
-    # print(eigenvectors.shape)
+    print('Before - Intra G3:', intra_group_distance(G_3), 'Intra G4:', intra_group_distance(G_4), 'Inter:', inter_group_distance(G_3, G_4))
+    print('After - Intra G3:', intra_group_distance(G_3.dot(P)), 'Intra G4:', intra_group_distance(G_4.dot(P)), 'Inter:', inter_group_distance(G_3.dot(P), G_4.dot(P)))
 
 
-experiment3()
+experiment2()
 
 # the misclassified points furthest in embedding space correspond to a spurious group

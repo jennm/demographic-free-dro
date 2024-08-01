@@ -1,10 +1,9 @@
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import cvxpy as cp
-from scipy.spatial.distance import cdist, pdist, squareform
+from scipy.spatial.distance import cdist, pdist
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics.pairwise import cosine_similarity
+import math
 
 def unpack_data(part):
     train_npz = np.load(f'cmnist_meta_{part}.npz')
@@ -24,10 +23,23 @@ def compute_covariance(G):
     A = G_centered.T @ G_centered
     return A
 
+
+def get_real_eig(A):
+    assert np.all(np.isreal(A))
+    assert np.allclose(A, A.T)
+    eigenvalues, eigenvectors = np.linalg.eigh(A)
+    if np.all(np.abs(np.imag(eigenvalues)) < 1e-10):
+        eigenvalues = np.real(eigenvalues)
+        eigenvectors = np.real(eigenvectors)
+
+    return eigenvalues, eigenvectors
+
+# shit in theory, maybe not in practice
+# looking at eigenvalues can help us check if we're *really* finding k-subspace
 def solve_sdp(A, V):
     n, d = A.shape[0], A.shape[1]
-    assert n == 25
-    assert d == 84
+    # assert n == 25
+    # assert d == 84
     Y = cp.Variable((d, d), symmetric=True)
     objective = cp.Minimize(cp.trace(Y))
     constraints = [Y >=0, Y <= np.eye(d)]
@@ -42,7 +54,7 @@ def solve_sdp(A, V):
         print(f'Naur: {problem.status}')
         return None, None
 
-def find_V(A, k, tol=1e-3, max_iter=100):
+def find_V(A, k, tol=1e-3, max_iter=200):
     V_low = 0
     V_high = np.min([np.trace(A[i]) for i in range(len(A))]) - 0.001
 
@@ -69,7 +81,10 @@ def find_V(A, k, tol=1e-3, max_iter=100):
 
 def recover_subspace(Y, k):
     eigenvalues, eigenvectors = np.linalg.eigh(Y)
-    return eigenvectors[:, -k:]
+    # make sure unit eigenvector
+    V = eigenvectors[:, -k:]
+    P = V @ V.T
+    return P # eigenvectors[:, -k:]
 
 
 def intra_group_distance(embeddings, metric='euclidean'):
@@ -81,90 +96,251 @@ def inter_group_distance(embeddings1, embeddings2, metric='euclidean'):
     pairwise_distances = cdist(embeddings1, embeddings2, metric)
     return np.mean(pairwise_distances)
 
-def get_fair_subspace(G, subclasses, k):
+def get_fair_subspace(G, subclasses, k, use_groups = range(25), use_misclassified = False, misclassified = None):
     scaler = StandardScaler()
     G = scaler.fit_transform(G)
-    d = G.shape[1]
+    noise_scale = 0.001
+    noise = noise_scale * np.random.randn(*G.shape)
+    G = G + noise
 
     A = []
-    for i in range(25):
-        G_i = G[subclasses == i]
-        A.append(compute_covariance(G_i))
+    if use_misclassified:
+        A.append(compute_covariance(G[misclassified]))
+        A.append(compute_covariance(G[~misclassified]))
+    else:
+        for i in use_groups:
+            G_i = G[subclasses == i]
+            A.append(compute_covariance(G_i))
     A = np.array(A)
 
-    k = min(min(np.linalg.matrix_rank(A)), d)
+    k = min(min(np.linalg.matrix_rank(A)), k)
+
+    print('Finding k:', k)
     Y_opt, _ = find_V(A, k)
     subspace = recover_subspace(Y_opt, k)
 
     return subspace
 
 
-def main():
-    _, embeddings, subclasses, labels, _, _ = unpack_data('train')
-    # target = [15, 16, 17, 18, 19]
-    # confounder = [2, 7, 12, 17, 22]
-    # union = target + confounder
+def get_fair_subspace_MANUAL_2_GROUPS(majority_group, minority_group, G, subclasses):
+    scaler = StandardScaler()
+    G = scaler.fit_transform(G)
+    noise_scale = 0.001
+    noise = noise_scale * np.random.randn(*G.shape)
+    G = G + noise
 
-    og_subclasses = np.copy(subclasses)
+    A = compute_covariance(G)
 
-    # mask = np.isin(subclasses, union)
-    # subclasses[~mask] = 0
-    # subclasses[subclasses == 17] = 3
-    # subclasses[np.isin(subclasses, target)] = 1
-    # subclasses[np.isin(subclasses, confounder)] = 2
+    eigenvalues, eigenvectors = get_real_eig(A)
+
+    G_1 = G[subclasses == majority_group] # M x D
+    G_2 = G[subclasses == minority_group] # m x D
+
+    variances_1 = []
+    variances_2 = []
+    variances_diffs = []
+
+    for i in range(len(eigenvectors[0])):
+        eigenvector = eigenvectors[:, i]
+        variances_1.append(np.var(np.dot(G_1, eigenvector)))
+        variances_2.append(np.var(np.dot(G_2, eigenvector)))
+        variances_diffs.append(abs(variances_1[-1] - variances_2[-1]))
+    
+    std_dev = np.std(variances_diffs)
+    print('std before:', std_dev)
+
+    tolerance = std_dev / 10
+    keep_idx = []
+    keep_diffs = []
+    for i in range(len(variances_1)):
+        if abs(variances_1[i] - variances_2[i]) < tolerance: 
+            keep_idx.append(i)
+            keep_diffs.append(abs(variances_1[i] - variances_2[i]))
+
+    print('std after:', np.std(keep_diffs))
+
+    D = len(eigenvectors[0])
+
+    P = np.zeros((D, D), dtype='float')
+    for idx in keep_idx:
+        u_i = eigenvectors[:, idx].reshape((D, 1))
+        P += (u_i @ u_i.T)
+
+    # U = np.concatenate([eigenvectors[:, idx].reshape(D, -1) for idx in keep_idx], axis=1)
+    # G.dot(P) N x D
+    # G.dot(U) N x k
+
+    return P
+
+def get_fair_subspace_MANUAL_N_GROUPS(groups, G, subclasses):
+    groups.sort()
 
     scaler = StandardScaler()
-    embeddings = scaler.fit_transform(embeddings)
+    G = scaler.fit_transform(G)
+    noise_scale = 0.001
+    noise = noise_scale * np.random.randn(*G.shape)
+    G = G + noise
 
-    A = []
-    for i in range(25):
-        G_i = embeddings[subclasses == i]
-        A.append(compute_covariance(G_i))
-        # A.append(np.random.rand(84, 84) * 100)
-    A = np.array(A)
+    A = compute_covariance(G)
 
-    # rank = np.linalg.matrix_rank(A)
-    # print(f"The rank of the matrix is: {rank}")
-    # print(f"Rank of full A: {np.linalg.matrix_rank(compute_covariance(embeddings))}")
+    eigenvalues, eigenvectors = get_real_eig(A)
 
-    k = 50
-    Y_opt, _ = find_V(A, k)
+    G_i = []
+    for i in groups:
+        G_i.append(G[subclasses == i])
 
-    subspace = recover_subspace(Y_opt, k)
-    print(subspace.shape)
+    D = eigenvectors.shape[1]
 
-    G_full = embeddings
-    G_proj = G_full.dot(subspace)
-    print(G_proj.shape)
+    variances_i = [[] for _ in range(len(groups))]
+    for i in range(len(groups)):
+        for j in range(D):
+            eigenvector = eigenvectors[:, j]
+            variances_i[i].append(np.var(np.dot(G_i[i], eigenvector)))
 
-    for i in range(15, 20):
-        print(f'before intra {i}', intra_group_distance(G_full[og_subclasses == i][:100]))
-        print('before intra 18', intra_group_distance(G_full[og_subclasses == i][:100]))
-        print(f'after intra {i}', intra_group_distance(G_proj[og_subclasses == i][:100]))
-        print('after intra 18', intra_group_distance(G_proj[og_subclasses == 18][:100]))
-        print('before inter', inter_group_distance(G_full[og_subclasses == i][:100], G_full[og_subclasses == 18][:100]))
-        print('after inter', inter_group_distance(G_proj[og_subclasses == i][:100], G_proj[og_subclasses == 18][:100]))
+    # each row is the ith group, each column is how well the jth eigenvector explains the ith group
+
+    variances_i = np.array(variances_i)
+    
+    abs_diff_sum = np.zeros(D)
+    
+    for i in range(len(groups)):
+        for j in range(i + 1, len(groups)):
+            abs_diff = np.abs(variances_i[i] - variances_i[j])
+            abs_diff_sum = np.maximum(abs_diff_sum, abs_diff) # += abs_diff
+
+    average_abs_diff = abs_diff_sum # / math.comb(len(groups), 2)
+
+    std_dev = np.std(average_abs_diff)
+    print('std before:', std_dev)
+
+    tolerance = std_dev / 10
+
+    print(average_abs_diff)
+    print(tolerance)
+    
+    below_tolerance_indices = np.where(average_abs_diff < tolerance)[0]
+    print('directions retained:', len(below_tolerance_indices))
+    print('std after:', np.std(average_abs_diff[below_tolerance_indices]))
+
+    eigenvectors = eigenvectors[:, below_tolerance_indices]
+
+    P = np.zeros((D, D), dtype='float')
+
+    for idx in range(eigenvectors.shape[1]):
+        u_i = eigenvectors[:, idx].reshape((D, 1))
+        P += (u_i @ u_i.T)
+
+    return P
+
+def get_fair_subspace_MANUAL_2_GROUPS_COSINE(majority_group, minority_group, G, subclasses):
+    scaler = StandardScaler()
+    G = scaler.fit_transform(G)
+    noise_scale = 0.001
+    noise = noise_scale * np.random.randn(*G.shape)
+    G = G + noise
+
+    G_1 = G[subclasses == majority_group] # M x D
+    G_2 = G[subclasses == minority_group] # m x D
+
+    A_1 = compute_covariance(G)
+    eigenvalues_1, eigenvectors_1 = get_real_eig(A_1)
+
+    A_2 = compute_covariance(G_2)
+    eigenvalues_2, eigenvectors_2 = get_real_eig(A_2)
+
+    similarity_matrix = cosine_similarity(eigenvectors_1.T, eigenvectors_2.T)
+    similarities = np.diag(similarity_matrix)
+
+    threshold = np.std(similarities) / 10
+
+    above_threshold_indices = np.where(similarities >= threshold)[0]
+
+    print('directions retained:', len(above_threshold_indices))
+
+    D = len(eigenvectors_1[0])
+
+    eigenvectors_1 = eigenvectors_1[:, above_threshold_indices]
+    eigenvectors_2 = eigenvectors_2[:, above_threshold_indices]
+
+    average_eigenvectors = (eigenvectors_1 + eigenvectors_2) / 2
 
 
-    data = {
-        'subclass': ['17'] * 100 + ['18'] * 100,
-    }
-    df = pd.DataFrame(data)
+    P = np.zeros((D, D), dtype='float')
+    # for idx in range(eigenvectors_1.shape[1]):
+    #     u_i = eigenvectors_1[:, idx].reshape((D, 1))
+    #     P += (u_i @ u_i.T)
 
-    # scaler = StandardScaler()
-    # G_proj = scaler.fit_transform(G_proj)
-    A_proj = compute_covariance(G_proj)
-    u_proj = recover_subspace(A_proj, 2)
-    G_proj = G_proj.dot(u_proj) 
+    # for idx in range(eigenvectors_2.shape[1]):
+    #     u_i = eigenvectors_2[:, idx].reshape((D, 1))
+    #     P += (u_i @ u_i.T)
 
-    pca_df = pd.DataFrame(data=np.concatenate((G_proj[og_subclasses == 17][:100][:, :2], G_proj[og_subclasses == 18][:100][:, :2]), axis=0), columns=['PC1', 'PC2'])
-    pca_df = pd.concat([pca_df, df[['subclass']]], axis=1)
+    for idx in range(average_eigenvectors.shape[1]):
+        u_i = average_eigenvectors[:, idx].reshape((D, 1))
+        P += (u_i @ u_i.T)
 
-    plt.figure(figsize=(10, 7))
-    sns.scatterplot(x='PC1', y='PC2', hue='subclass', data=pca_df, s=100)
-    plt.title('PCA After Projecting Out Spurious Directions')
-    plt.savefig('kFair_PCA_experiment.png')
+    return P
+
+def get_fair_subspace_MANUAL_N_GROUPS_COSINE(groups, G, subclasses):
+    scaler = StandardScaler()
+    G = scaler.fit_transform(G)
+    # noise_scale = 0.001
+    # noise = noise_scale * np.random.randn(*G.shape)
+    # G = G + noise
+    D = G.shape[1]
+    groups.sort()
+
+    group_eig = []
+    for i in groups:
+        G_i = G[subclasses == i]
+        A_i = compute_covariance(G_i)
+        _, eigenvectors_i = get_real_eig(A_i)
+        group_eig.append(eigenvectors_i)
+
+
+    similarities = np.zeros(D)
+    denom = 0
+    for i in range(len(groups)):
+        for j in range(len(groups)):
+            if i >= j: continue
+            denom += 1
+            # similarities += np.diag(cosine_similarity(group_eig[i].T, group_eig[j].T))
+            similarities = np.maximum(similarities, np.diag(cosine_similarity(group_eig[i].T, group_eig[j].T)))
+
+    # similarities /= math.comb(len(groups), 2)
+
+    threshold = 0.5 # np.std(similarities) / 10
+    # print(similarities)
+    # print(threshold)
+    # exit()
+
+    above_threshold_indices = np.where(similarities >= threshold)[0]
+
+    print('directions retained:', len(above_threshold_indices))
+
+    for i in range(len(groups)):
+        group_eig[i] = group_eig[i][:, above_threshold_indices]
+
+    average_eigenvectors = np.mean(np.array(group_eig), axis=0)
+    P = np.zeros((D, D), dtype='float')
+
+    for idx in range(average_eigenvectors.shape[1]):
+        u_i = average_eigenvectors[:, idx].reshape((D, 1))
+        P += (u_i @ u_i.T)
+
+    return P
 
 
     
-# main()
+    
+
+
+
+
+
+
+'''
+PCA on each group k vectors per grouped, ranked by eigenvalue
+cosine similarity between corresponding vectors across groups
+drop ones with low cosine similarity
+play with threshold
+'''
