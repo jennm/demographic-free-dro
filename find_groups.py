@@ -109,16 +109,16 @@ def find_groups():
 
 
 
-def __find_groups(train_data, val_data, test_data, feature_extractor, **loader_kwargs):
+def __find_groups(dataset, epochs, train_data, val_data, test_data, feature_extractor, **loader_kwargs):
     train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
     val_loader = create_dataloader(feature_extractor, val_data, None, loader_kwargs)
     test_loader = create_dataloader(feature_extractor, test_data, None, loader_kwargs)
 
-    experiment(train_loader, 'train_17_epoch')
-    experiment(val_loader, 'val_17_epoch')
-    experiment(test_loader, 'test_17_epoch')
+    experiment(dataset, train_loader, f'train_{epochs}_epoch')
+    experiment(dataset, val_loader, f'val_{epochs}_epoch')
+    experiment(dataset, test_loader, f'test_{epochs}_epoch')
 
-def experiment(data_loader, desc):
+def experiment(dataset, data_loader, desc):
     store_pred = []
     store_emb = []
     store_sub = []
@@ -160,4 +160,4 @@ def experiment(data_loader, desc):
     print(store_label.sum())
     print(np.argmax(store_pred, axis=1).sum())
 
-    np.savez(f'cmnist_meta_{desc}.npz', predictions=store_pred, embeddings=store_emb, subclass=store_sub, label=store_label, loss=store_loss, data_idx=store_data_idx)
+    np.savez(f'{dataset}_meta_{desc}.npz', predictions=store_pred, embeddings=store_emb, subclass=store_sub, label=store_label, loss=store_loss, data_idx=store_data_idx)

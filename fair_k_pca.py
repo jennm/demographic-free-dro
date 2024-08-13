@@ -31,19 +31,23 @@ def get_real_eig(A):
     if np.all(np.abs(np.imag(eigenvalues)) < 1e-10):
         eigenvalues = np.real(eigenvalues)
         eigenvectors = np.real(eigenvectors)
+    else:
+        print('fucking hell')
+        raise ValueError
 
     return eigenvalues, eigenvectors
 
 # shit in theory, maybe not in practice
 # looking at eigenvalues can help us check if we're *really* finding k-subspace
-def solve_sdp(A, V):
+def solve_sdp(A, V, k):
     n, d = A.shape[0], A.shape[1]
-    # assert n == 25
-    # assert d == 84
     Y = cp.Variable((d, d), symmetric=True)
     objective = cp.Minimize(cp.trace(Y))
+    # objective = cp.Minimize(cp.norm(Y, 'nuc'))
     constraints = [Y >=0, Y <= np.eye(d)]
     constraints += [cp.trace(Y @ A[i]) >= V for i in range(n)]
+    # constraints += [cp.lambda_sum_smallest(Y, d - k) >= 0]
+    # constraints += [cp.norm(Y @ A[i], 'fro') >= V for i in range(n)]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.CLARABEL)
 
@@ -54,20 +58,23 @@ def solve_sdp(A, V):
         print(f'Naur: {problem.status}')
         return None, None
 
-def find_V(A, k, tol=1e-3, max_iter=200):
+def find_V(A, k, tol=1e-7, max_iter=1000):
     V_low = 0
-    V_high = np.min([np.trace(A[i]) for i in range(len(A))]) - 0.001
+    V_high = np.min([np.trace(A[i]) for i in range(len(A))])
+
+    last_valid_Y = None
 
     for _ in range(max_iter):
         V_mid = (V_low + V_high) / 2
-        Y_opt, trace_Y_opt = solve_sdp(A, V_mid)
+        Y_opt, trace_Y_opt = solve_sdp(A, V_mid, k)
 
         if trace_Y_opt == None:
-            V_high = V_high - 10
+            print('Something is probably going wrong.')
             continue
 
-        print(trace_Y_opt, V_mid, 'V low', V_low, 'V high', V_high)
-
+        # print(trace_Y_opt, V_mid, 'V low', V_low, 'V high', V_high)
+        last_valid_Y = Y_opt
+        
         if abs(trace_Y_opt - k) <= tol:
             print('found')
             return Y_opt, V_mid
@@ -77,14 +84,14 @@ def find_V(A, k, tol=1e-3, max_iter=200):
         else:
             V_low = V_mid
 
-    return None, None
+    return last_valid_Y, None
 
 def recover_subspace(Y, k):
-    eigenvalues, eigenvectors = np.linalg.eigh(Y)
-    # make sure unit eigenvector
+    eigenvalues, eigenvectors = get_real_eig(Y)
+    # print('FPCA Top Eigenvalues:', eigenvalues)
     V = eigenvectors[:, -k:]
     P = V @ V.T
-    return P # eigenvectors[:, -k:]
+    return P, V
 
 
 def intra_group_distance(embeddings, metric='euclidean'):
@@ -97,12 +104,6 @@ def inter_group_distance(embeddings1, embeddings2, metric='euclidean'):
     return np.mean(pairwise_distances)
 
 def get_fair_subspace(G, subclasses, k, use_groups = range(25), use_misclassified = False, misclassified = None):
-    scaler = StandardScaler()
-    G = scaler.fit_transform(G)
-    noise_scale = 0.001
-    noise = noise_scale * np.random.randn(*G.shape)
-    G = G + noise
-
     A = []
     if use_misclassified:
         A.append(compute_covariance(G[misclassified]))
@@ -113,22 +114,19 @@ def get_fair_subspace(G, subclasses, k, use_groups = range(25), use_misclassifie
             A.append(compute_covariance(G_i))
     A = np.array(A)
 
+    print('NUM GROUPS:', len(A))
+
     k = min(min(np.linalg.matrix_rank(A)), k)
 
-    print('Finding k:', k)
-    Y_opt, _ = find_V(A, k)
-    subspace = recover_subspace(Y_opt, k)
+    print('Finding k:', k, 'Min rank:', min(np.linalg.matrix_rank(A)))
 
-    return subspace
+    Y_opt, _ = find_V(A, k)
+    subspace, span = recover_subspace(Y_opt, k)
+
+    return subspace, Y_opt, span
 
 
 def get_fair_subspace_MANUAL_2_GROUPS(majority_group, minority_group, G, subclasses):
-    scaler = StandardScaler()
-    G = scaler.fit_transform(G)
-    noise_scale = 0.001
-    noise = noise_scale * np.random.randn(*G.shape)
-    G = G + noise
-
     A = compute_covariance(G)
 
     eigenvalues, eigenvectors = get_real_eig(A)
@@ -147,7 +145,7 @@ def get_fair_subspace_MANUAL_2_GROUPS(majority_group, minority_group, G, subclas
         variances_diffs.append(abs(variances_1[-1] - variances_2[-1]))
     
     std_dev = np.std(variances_diffs)
-    print('std before:', std_dev)
+    # print('std before:', std_dev)
 
     tolerance = std_dev / 10
     keep_idx = []
@@ -156,8 +154,10 @@ def get_fair_subspace_MANUAL_2_GROUPS(majority_group, minority_group, G, subclas
         if abs(variances_1[i] - variances_2[i]) < tolerance: 
             keep_idx.append(i)
             keep_diffs.append(abs(variances_1[i] - variances_2[i]))
+    
+    print('directions retained:', len(keep_idx))
 
-    print('std after:', np.std(keep_diffs))
+    # print('std after:', np.std(keep_diffs))
 
     D = len(eigenvectors[0])
 
@@ -170,7 +170,11 @@ def get_fair_subspace_MANUAL_2_GROUPS(majority_group, minority_group, G, subclas
     # G.dot(P) N x D
     # G.dot(U) N x k
 
-    return P
+    span = eigenvectors[:, keep_idx[0]].reshape(-1, 1)
+    for i in range(1, len(keep_idx)):
+        span = np.concatenate((span, eigenvectors[:, keep_idx[i]].reshape(-1, 1)), axis=1)
+
+    return P, span
 
 def get_fair_subspace_MANUAL_N_GROUPS(groups, G, subclasses):
     groups.sort()
@@ -233,12 +237,6 @@ def get_fair_subspace_MANUAL_N_GROUPS(groups, G, subclasses):
     return P
 
 def get_fair_subspace_MANUAL_2_GROUPS_COSINE(majority_group, minority_group, G, subclasses):
-    scaler = StandardScaler()
-    G = scaler.fit_transform(G)
-    noise_scale = 0.001
-    noise = noise_scale * np.random.randn(*G.shape)
-    G = G + noise
-
     G_1 = G[subclasses == majority_group] # M x D
     G_2 = G[subclasses == minority_group] # m x D
 
@@ -251,7 +249,7 @@ def get_fair_subspace_MANUAL_2_GROUPS_COSINE(majority_group, minority_group, G, 
     similarity_matrix = cosine_similarity(eigenvectors_1.T, eigenvectors_2.T)
     similarities = np.diag(similarity_matrix)
 
-    threshold = np.std(similarities) / 10
+    threshold = np.mean(similarities)
 
     above_threshold_indices = np.where(similarities >= threshold)[0]
 
@@ -278,7 +276,7 @@ def get_fair_subspace_MANUAL_2_GROUPS_COSINE(majority_group, minority_group, G, 
         u_i = average_eigenvectors[:, idx].reshape((D, 1))
         P += (u_i @ u_i.T)
 
-    return P
+    return P, average_eigenvectors
 
 def get_fair_subspace_MANUAL_N_GROUPS_COSINE(groups, G, subclasses):
     scaler = StandardScaler()

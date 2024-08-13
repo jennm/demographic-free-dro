@@ -17,21 +17,22 @@ class ColoredMNIST(Dataset):
 
     def __init__(self, data, targets, train=True, transform=None, seed=None):
         self.seed = seed
-        self.p_correlation = 0.95
+        self.p_correlation = [0.98, 0.02]
         self.cmap = 'hsv'
 
         self.class_map = {0: 0, 1: 0, 
-                          2: 1, 3: 1, 
-                          4: 2, 5: 2, 
-                          6: 3, 7: 3, 
-                          8: 4, 9: 4}
+                          2: 0, 3: 0, 
+                          4: 0, 5: 1, 
+                          6: 1, 7: 1, 
+                          8: 1, 9: 1}
         
         self.classes = list(self.class_map.keys()) # list of original classes i.e. num digits in MNIST: 0 1 2 3 4 5 6 7 8 9
         self.new_classes = np.unique(list(self.class_map.values())) # list of new classes: 0 1 2 3 4
+        self.num_colors = 2
 
         self.test_classes = [x for x in np.unique(targets) if x not in self.classes] # accounts for any digits not in in train set
 
-        self.p_correlation = [self.p_correlation] * len(self.new_classes) # sets correlation rate for each of the new classes
+        # self.p_correlation = [self.p_correlation] * len(self.new_classes) # sets correlation rate for each of the new classes
 
         self.train = train
         self.test_shift = "random"
@@ -71,9 +72,9 @@ class ColoredMNIST(Dataset):
             cmap = cm.get_cmap(cmap)
         except ValueError:  # single color
             cmap = self._get_single_color_cmap(cmap)
-        cmap_vals = np.arange(0, 1, step=1 / len(self.new_classes))
+        cmap_vals = np.arange(0, 1, step=1 / self.num_colors)
         colors = []
-        for ix, _ in enumerate(self.new_classes):
+        for ix in range(self.num_colors):
             rgb = cmap(cmap_vals[ix])[:3]
             rgb = [int(float(x)) for x in np.array(rgb) * 255]
             colors.append(rgb)
@@ -121,10 +122,11 @@ class ColoredMNIST(Dataset):
 
                     # if i'm spurious get my assigned color, else grab the next color
                     # color_ix = (ix if is_spurious[cix_] else (ix + 1) % len(self.colors))
-                    color_ix = (ix if is_spurious[cix_] else
-                                np.random.choice([
-                                    x for x in np.arange(len(self.colors)) if x != ix])
-                                    )
+
+                    color_ix = (1 if is_spurious[cix_] else
+                            np.random.choice([
+                                x for x in np.arange(len(self.colors)) if x != 1])
+                                )
                     
                     
                 else:
@@ -216,9 +218,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
                          "2": int(digit_class == 2), 
                          "3": int(digit_class == 3), 
                          "4": int(digit_class == 4), 
-                         "C0": int(color_class == "C0"),
+                         "confounder": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "confounder": int(color_class == "C2"),
+                         "C2": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }
@@ -232,12 +234,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
         metadata.append({'split': 1, 'image_id': image_id, 
                          "0": int(digit_class == 0), 
                          "target": int(digit_class == 1), 
-                         "2": int(digit_class == 2), 
-                         "3": int(digit_class == 3), 
-                         "4": int(digit_class == 4), 
-                         "C0": int(color_class == "C0"),
+                         "confounder": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "confounder": int(color_class == "C2"),
+                         "C2": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }
@@ -251,12 +250,9 @@ def load_colored_mnist(root_dir, train_shuffle=True, transform=None):
         metadata.append({'split': 2, 'image_id': image_id, 
                          "0": int(digit_class == 0), 
                          "target": int(digit_class == 1), 
-                         "2": int(digit_class == 2), 
-                         "3": int(digit_class == 3), 
-                         "4": int(digit_class == 4), 
-                         "C0": int(color_class == "C0"),
+                         "confounder": int(color_class == "C0"),
                          "C1": int(color_class == "C1"),
-                         "confounder": int(color_class == "C2"),
+                         "C2": int(color_class == "C2"),
                          "C3": int(color_class == "C3"),
                          "C4": int(color_class == "C4")
                          }

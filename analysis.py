@@ -190,22 +190,24 @@ def print_accs(
 def process_df(train_df, val_df, test_df, n_groups):
     loss_metrics = []
     acc_metrics = []
-    if type(n_groups) is list:
+
+    if type(n_groups) is list: # if train, val, and test might have diff # groups
         off_set = 3
-        for group_idx in range(max(n_groups)):  # 4 groups
-            loss_metrics.append(f"avg_loss_group:{group_idx}")
+        for group_idx in range(max(n_groups)): # loop through the largest # groups
+            loss_metrics.append(f"avg_loss_group:{group_idx}") # append col header to metrics list
             acc_metrics.append(f"avg_acc_group:{group_idx}")    
     else:
         off_set = 1
-        for group_idx in range(n_groups):  # 4 groups
+        for group_idx in range(n_groups):
             loss_metrics.append(f"avg_loss_group:{group_idx}")
             acc_metrics.append(f"avg_acc_group:{group_idx}")
         n_groups = [n_groups]
+
     # robust acc
     df_count = 0
-    for df in [train_df, val_df, test_df]:
+    for df in [train_df, val_df, test_df]: # for each split dataframe
         df["robust_loss"] = np.max(df.loc[:, loss_metrics[0:n_groups[df_count % off_set]]], axis=1)
-        non_zero_acc = df.loc[:, acc_metrics[0:1] + acc_metrics[2:n_groups[df_count % off_set]]]
+        non_zero_acc = df.loc[:, acc_metrics[0:n_groups[df_count % off_set]]]
         df["robust_acc"] = np.min(non_zero_acc, axis=1)
         df_count += 1
 
@@ -262,7 +264,6 @@ if __name__ == "__main__":
             test_df = pd.read_csv(test_path)
             # group_count = np.max(np.array([col.split(":")[1] for col in val_df.columns if "_group" in col]).astype(int)) + 1
             group_counts = [np.max(np.array([col.split(":")[1] for col in _df.columns if "_group" in col]).astype(int)) + 1 for _df in [train_df, val_df, test_df]]
-            
             process_df(train_df, val_df, test_df, n_groups=group_counts)
 
             dfs = {}

@@ -237,9 +237,21 @@ def subspace_per_label_ADD(embeddings, subclasses, misclassified, labels, test_e
     return embeddings, test_embeddings
 
 def one_subspace(embeddings, subclasses, misclassified, labels, test_embeddings, test_subclasses, test_misclassified):
-    # answes the question: does fpca cut out redness vs antiredness
-    subspace = get_fair_subspace(embeddings, subclasses, 77, range(2), True, np.isin(subclasses, list(range(3, 25, 5))))
-    # subspace = get_fair_subspace(embeddings, labels, 70, range(2))
+    # answers the question: does fpca cut out redness vs antiredness
+    # subspace1 = get_fair_subspace(embeddings, labels, 41, [0])
+
+    subspace, _ = get_fair_subspace(embeddings, subclasses, 50, list(range(4)), True, labels)
+
+    # subspace = get_fair_subspace_MANUAL_2_GROUPS_COSINE(0, 1, embeddings, labels)
+
+    # pairs = subclasses.copy()
+    # pairs[(subclasses == 6) | (subclasses == 1)] = 10
+    # pairs[(subclasses == 7) | (subclasses == 2)] = 11
+    # pairs[(subclasses == 8) | (subclasses == 3)] = 12
+    # pairs[(subclasses == 9) | (subclasses == 4)] = 13
+    # pairs[(subclasses == 5) | (subclasses == 0)] = 14
+    # subspace = get_fair_subspace(embeddings, pairs, 10, list(range(10, 15)))#, True, np.isin(subclasses, [1, 6]))
+    # subspace = get_fair_subspace(embeddings[~misclassified], subclasses[~misclassified], 70, list(range(10)))
 
     embeddings = compute_projection_all(embeddings, subspace)
     # embeddings = compute_projection(embeddings, subspace, misclassified)
@@ -295,20 +307,35 @@ def one_subspace_POSITIVE_LABELS(embeddings, subclasses, misclassified, labels, 
 
     return embeddings, test_embeddings
 
+def scale_G(G):
+    scaler = StandardScaler()
+    G = scaler.fit_transform(G)
+    noise_scale = 0.0001
+    noise = noise_scale * np.random.randn(*G.shape)
+    G = G + noise
+    return G
+ 
 def main():
     seed = 42
     torch.manual_seed(seed)
 
-    logits, embeddings, subclasses, labels, _, _ = unpack_data('cmnist_meta_train_17_epoch') # unpack_data('train_17_epoch')
+    logits, embeddings, subclasses, labels, _, _ = unpack_data('cmnist_meta_train_14_epoch') # unpack_data('train_17_epoch')
     predictions = np.argmax(logits, axis=1)
     misclassified = predictions != labels
 
-    test_logits, test_embeddings, test_subclasses, test_labels, _, _ = unpack_data('cmnist_meta_test_17_epoch') # unpack_data('test_17_epoch')
+    test_logits, test_embeddings, test_subclasses, test_labels, _, _ = unpack_data('cmnist_meta_test_14_epoch') # unpack_data('test_17_epoch')
 
     test_predictions = np.argmax(test_logits, axis=1)
     test_misclassified = test_predictions != test_labels
 
+    embeddings = scale_G(embeddings)
+    test_embeddings = scale_G(test_embeddings)
     embeddings, test_embeddings = one_subspace(embeddings, subclasses, misclassified, labels, test_embeddings, test_subclasses, test_misclassified)
+    
+    scaler = StandardScaler()
+    embeddings = scaler.fit_transform(embeddings)
+    scaler = StandardScaler()
+    test_embeddings = scaler.fit_transform(test_embeddings)
 
     embeddings = torch.tensor(embeddings, dtype=torch.float32)
     labels = torch.tensor(labels, dtype=torch.long)
@@ -321,7 +348,7 @@ def main():
     model = LinearModel(d, 2)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=0.0001)
     batch_size = 32
 
     val_dataset = TensorDataset(embeddings, labels)
@@ -331,21 +358,28 @@ def main():
     # correct_wrong_weights = [len(misclassified) / correct_count, len(misclassified) / misclassified_count]
     # weights = correct_wrong_weights[misclassified]
 
-    # misclassified = subclasses
-    # # misclassified = labels
-    # misclassified = torch.tensor(misclassified, dtype=torch.long)
-    # class_counts = torch.bincount(misclassified)
-    # class_weights = 1. / class_counts.float()
-    # # class_weights = torch.tensor([0.2, 0.8], dtype=torch.float)
-    # weights = class_weights[misclassified]
-    # sampler = WeightedRandomSampler(weights, len(misclassified), replacement=True)
+    misclassified = subclasses
+    misclassified = torch.tensor(misclassified, dtype=torch.long)
+    class_counts = torch.bincount(misclassified)
+    class_weights = 1. / class_counts.float()
+    # class_weights = torch.tensor([0.2, 0.8], dtype=torch.float)
+    weights = class_weights[misclassified]
+    sampler = WeightedRandomSampler(weights, len(misclassified), replacement=True)
 
-    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True) # sampler=sampler)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=batch_size, sampler=sampler)
 
-    for e in range(10):
+    for e in range(5):
         print('Epoch Interval:', e * 5)
         train(model, 5, val_loader, optimizer, criterion)
         evaluate(model, test_embeddings, test_labels, test_subclasses, test_predictions, torch.tensor(test_logits, dtype=torch.float32))
+
+        # embeddings = embeddings.numpy()
+        # test_embeddings = test_embeddings.numpy()
+        # embeddings, test_embeddings = one_subspace(embeddings, subclasses, misclassified, labels, test_embeddings, test_subclasses, test_misclassified)
+        # embeddings = torch.tensor(embeddings, dtype=torch.float32)
+
+        # test_embeddings = torch.tensor(test_embeddings, dtype=torch.float32)
+        # val_dataset = TensorDataset(embeddings, labels)
 
 main()
 

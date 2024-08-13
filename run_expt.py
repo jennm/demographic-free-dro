@@ -208,7 +208,9 @@ def main(args):
 
         # train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
         # visualize(train_loader, feature_extractor, args.vis_layer)
-        __find_groups(train_data, val_data, test_data, feature_extractor, **loader_kwargs)
+        index = args.resume_path.find('_')
+        epoch = int(args.resume_path[:index])
+        __find_groups(args.dataset, epoch, train_data, val_data, test_data, feature_extractor, **loader_kwargs)
         # find_groups()
         # george_find_groups()
         # breakdown()

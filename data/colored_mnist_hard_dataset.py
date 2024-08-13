@@ -45,6 +45,8 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
 
         target_idx = self.attr_idx(self.target_name) 
         self.y_array = self.attrs_df[:, target_idx]
+        self.y_array = self.y_array.astype(np.int64)
+
         self.up_weight_array = torch.ones(len(self.y_array))
         self.n_classes = 2 
 
@@ -61,19 +63,20 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
                             + self.confounder_array).astype("int")
 
         ##########################################################################
-        # True Groups
+        # # True Groups
         df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)
         )
-        grouped = df.groupby(list(df.columns[2:12]))
-        # i = 0
-        # for name, group in grouped:
-        #     print(f'Index {i} : Group: {name}')
-        #     print()
-        #     i += 1
+        grouped = df.groupby(list(df.columns[[2,3,7,8,9,10,11]]))
+        i = 0
+        for name, group in grouped:
+            print(f'Index {i} : Group: {name}')
+            print()
+            i += 1
         df_grouped = grouped.ngroup().reset_index(name='group_number')
+        # print(df_grouped)
         self.group_array = np.array(df_grouped['group_number'].tolist())
-        self.n_groups = 25
+        self.n_groups = 4
 
         ##########################################################################
 
@@ -98,8 +101,6 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
             flat_groups = np.apply_along_axis(bin_to_dec, 1, group_info)
             remap = {g:i for i, g in enumerate(set(flat_groups))}
 
-            print(remap)
-
             def _remap(k): return remap[k]
             self.classifier_group_array = np.vectorize(_remap)(flat_groups)
             self.classifier_n_groups = len(remap)
@@ -121,6 +122,15 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
             #     ]
             # )
 
+        #############################################################################
+        # keep_confounder_mask = np.isin(self.group_array, [18])
+        # true_indices = np.flatnonzero(keep_confounder_mask)
+        # sample_mask = np.zeros_like(keep_confounder_mask, dtype=bool)
+        # sample_mask[true_indices[:130 * 4]] = True
+        # keep_confounder_mask = keep_confounder_mask & sample_mask
+
+        # keep_confounder_mask = keep_confounder_mask | np.isin(self.group_array, [3, 8, 13, 23])
+        #############################################################################
 
         self.split_df = pd.read_csv(
             os.path.join(self.root_dir, "data", metadata_csv_name)
@@ -131,6 +141,23 @@ class ColoredMNIST_HARD_Dataset(ConfounderDataset):
             "val": 1,
             "test": 2
         }
+
+        # keep_confounder_mask = keep_confounder_mask | np.isin(self.split_array, [1, 2])
+
+        # self.split_array = self.split_array[keep_confounder_mask]
+        # self.filename_array = self.filename_array[keep_confounder_mask]
+        # self.y_array = self.y_array[keep_confounder_mask]
+        # self.group_array = self.group_array[keep_confounder_mask]
+
+        # remap = {g:i for i, g in enumerate(set(self.group_array))}
+        # def _remap(k): return remap[k]
+        # self.group_array = np.vectorize(_remap)(self.group_array)
+        # self.n_groups = len(remap)
+
+        # print(self.y_array[self.split_array == 0].sum())
+        # print(len(self.filename_array[(self.split_array == 1) & (self.y_array == 1)]))
+        # print(len(self.filename_array[(self.split_array == 1) & (self.y_array == 0)]))
+        # exit()
 
         if model_attributes[self.model_type]["feature_type"] == "precomputed":
             self.features_mat = torch.from_numpy(
