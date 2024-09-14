@@ -102,7 +102,9 @@ def print_accs(
     for split in splits:
         assert split in dfs
 
+    print('early stopping epoch')
     early_stopping_epoch = np.argmax(dfs["val"]["robust_acc"].values)
+    print('done argmaxing')
 
     epochs = []
     assert early_stop or (epoch_to_eval is not None)
@@ -116,6 +118,10 @@ def print_accs(
     if print_avg:
         metrics += [("Val Average Acc", "avg_acc")]
     if print_groups: 
+        if type(group_counts) is list:
+            group_count = max(group_counts)
+        else:
+            group_count = group_counts
         for i in range(group_count):
             metrics += [(f"group {i} acc", f"avg_acc_group:{i}")]
 
@@ -124,73 +130,85 @@ def print_accs(
         results[metric] = {}
 
         for split in splits:
-            for epoch_print_str, epoch_save_str, epoch in epochs:
-                if epoch not in dfs[split]["epoch"].values:
-                    if output:
-                        print(
-                            f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch_to_eval}):               Not yet run"
-                        )
-                else:
-                    if split == "train":
-                        avg_acc, robust_acc = get_accs_for_epoch_across_batches(
-                            dfs[split], epoch)
-                        if metric == "avg_acc":
-                            acc = avg_acc
-                        elif metric == "robust_acc":
-                            acc = robust_acc
-                    else:
-                        idx = np.where(dfs[split]["epoch"] == epoch)[0][
-                            -1]  # Take the last batch in this epoch
-                        acc = dfs[split].loc[idx, metric]
-
-                    if split not in results[metric]:
-                        results[metric][split] = {}
-
-                    if params is None:
+            try:
+                for epoch_print_str, epoch_save_str, epoch in epochs:
+                    if epoch not in dfs[split]["epoch"].values:
                         if output:
                             print(
-                                f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch}): "
-                                f"{acc*100:.1f}")
-                            with open(output_dir + "/val_accuracies.txt",
-                                      "a") as text_file:
+                                f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch_to_eval}):               Not yet run"
+                            )
+                    else:
+                        if split == "train":
+                            avg_acc, robust_acc = get_accs_for_epoch_across_batches(
+                                dfs[split], epoch)
+                            if metric == "avg_acc":
+                                acc = avg_acc
+                            elif metric == "robust_acc":
+                                acc = robust_acc
+                        else:
+                            idx = np.where(dfs[split]["epoch"] == epoch)[0][
+                                -1]  # Take the last batch in this epoch
+                            acc = dfs[split].loc[idx, metric]
+
+                        if split not in results[metric]:
+                            results[metric][split] = {}
+
+                        if params is None:
+                            if output:
                                 print(
                                     f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch}): "
-                                    f"{acc*100:.1f}",
-                                    file=text_file,
-                                )
-                    else:
-                        n_str = f"n_{split}"
-                        minority_n = np.min(params[n_str])
-                        total_n = np.sum(params[n_str])
-                        if metric == "robust_acc":
-                            n = minority_n
-                        elif metric == "avg_acc":
-                            n = total_n
+                                    f"{acc*100:.1f}")
+                                with open(output_dir + "/val_accuracies.txt",
+                                        "a") as text_file:
+                                    print(
+                                        f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch}): "
+                                        f"{acc*100:.1f}",
+                                        file=text_file,
+                                    )
+                        else:
+                            n_str = f"n_{split}"
+                            minority_n = np.min(params[n_str])
+                            total_n = np.sum(params[n_str])
+                            if metric == "robust_acc":
+                                n = minority_n
+                            elif metric == "avg_acc":
+                                n = total_n
 
-                        stddev = np.sqrt(acc * (1 - acc) / n)
-                        results[metric][split][epoch_save_str] = (acc, stddev)
+                            stddev = np.sqrt(acc * (1 - acc) / n)
+                            results[metric][split][epoch_save_str] = (acc, stddev)
 
-                        if output:
-                            print(
-                                f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch}): "
-                                f"{acc*100:.1f} ({stddev*100:.1f})")
+                            if output:
+                                print(
+                                    f"{metric_str} {split:<5} acc ({epoch_print_str} {epoch}): "
+                                    f"{acc*100:.1f} ({stddev*100:.1f})")
+            except:
+                continue
     return results
 
 
 def process_df(train_df, val_df, test_df, n_groups):
     loss_metrics = []
     acc_metrics = []
-    for group_idx in range(n_groups):  # 4 groups
-        loss_metrics.append(f"avg_loss_group:{group_idx}")
-        acc_metrics.append(f"avg_acc_group:{group_idx}")
-    # robust acc
-    for df in [train_df, val_df, test_df]:
-        try:
-            df["robust_loss"] = np.max(df.loc[:, loss_metrics], axis=1)
-            df["robust_acc"] = np.min(df.loc[:, acc_metrics], axis=1)
-        except:
-            pass
 
+    if type(n_groups) is list: # if train, val, and test might have diff # groups
+        off_set = 3
+        for group_idx in range(max(n_groups)): # loop through the largest # groups
+            loss_metrics.append(f"avg_loss_group:{group_idx}") # append col header to metrics list
+            acc_metrics.append(f"avg_acc_group:{group_idx}")    
+    else:
+        off_set = 1
+        for group_idx in range(n_groups):
+            loss_metrics.append(f"avg_loss_group:{group_idx}")
+            acc_metrics.append(f"avg_acc_group:{group_idx}")
+        n_groups = [n_groups]
+
+    # robust acc
+    df_count = 0
+    for df in [train_df, val_df, test_df]: # for each split dataframe
+        df["robust_loss"] = np.max(df.loc[:, loss_metrics[0:n_groups[df_count % off_set]]], axis=1)
+        non_zero_acc = df.loc[:, acc_metrics[0:n_groups[df_count % off_set]]]
+        df["robust_acc"] = np.min(non_zero_acc, axis=1)
+        df_count += 1
 
 if __name__ == "__main__":
     import argparse
@@ -205,7 +223,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",
                         type=str,
                         default="CUB",
-                        help="CUB, CelebA, or MultiNLI")
+                        help="CUB, CelebA, ColoredMNIST, ColoredMNIST_HARD, or MultiNLI")
     # Default arguments (don't change)
     parser.add_argument("--results_dir", type=str, default="results/")
     parser.add_argument("--exp_substring", type=str, default="")
@@ -225,7 +243,7 @@ if __name__ == "__main__":
     args.training_output_dir = metadata_dir
     runs = [
         folder for folder in os.listdir(args.training_output_dir)
-        if args.exp_substring in folder
+        if args.exp_substring == folder
     ]
 
     # Print robust val accuracies from downstream runs
@@ -235,29 +253,33 @@ if __name__ == "__main__":
             
             training_output_dir = os.path.join(args.training_output_dir,
                                             sub_exp_name, "model_outputs")
+            
             train_path = os.path.join(training_output_dir, "train.csv")
             val_path = os.path.join(training_output_dir, "val.csv")
             test_path = os.path.join(training_output_dir, "test.csv")
+
             train_df = pd.read_csv(train_path)
             val_df = pd.read_csv(val_path)
             test_df = pd.read_csv(test_path)
-            group_count = np.max(np.array([col.split(":")[1] for col in val_df.columns if "_group" in col]).astype(int)) + 1
-            
-            process_df(train_df, val_df, test_df, n_groups=group_count)
+            # group_count = np.max(np.array([col.split(":")[1] for col in val_df.columns if "_group" in col]).astype(int)) + 1
+            group_counts = [np.max(np.array([col.split(":")[1] for col in _df.columns if "_group" in col]).astype(int)) + 1 for _df in [train_df, val_df, test_df]]
+            process_df(train_df, val_df, test_df, n_groups=group_counts)
 
             dfs = {}
             dfs["train"] = train_df
             dfs["val"] = val_df
             dfs["test"] = test_df
+
+            print('TRAIN DF', train_df)
             
-            print(f"Downstream Accuracies for {sub_exp_name} with {group_count} groups.")
+            print(f"Downstream Accuracies for {sub_exp_name} with {group_counts} groups.")
             with open(training_output_dir + "/val_accuracies.txt", "a") as text_file:
                 print(f"Downstream Accuracies for {sub_exp_name}", file=text_file)
                 
             # Print average and worst group accuracies for val
             print_accs(
                 dfs,
-                args.training_output_dir,
+                training_output_dir,
                 params=None,
                 epoch_to_eval=None,
                 print_avg=True,

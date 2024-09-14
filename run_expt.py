@@ -2,12 +2,13 @@ import os, csv
 import argparse
 import pandas as pd
 import torch
-import torch.nn as nn
-import torchvision
 from tqdm import tqdm
 import numpy as np
 import wandb
 from copy import deepcopy
+import math
+import time
+import matplotlib.pyplot as plt
 
 from models import model_attributes
 from data.data import dataset_attributes, shift_types, prepare_data, log_data
@@ -17,6 +18,39 @@ from utils import set_seed, Logger, CSVBatchLogger, log_args, get_model, hinge_l
 from train import train
 from data.folds import Subset, ConcatDataset
 
+from learned_visualizations import visualize
+from get_embeddings import get_embeddings, create_dataloader
+
+import torch.multiprocessing as mp
+
+from find_groups import find_groups, __find_groups
+
+from functools import partial
+
+def get_subset(
+    dataset,
+    seed=0,
+    fraction=0.2,
+    use_classifier_groups=False
+):
+    random = np.random.RandomState(seed)
+    indices = list(range(len(dataset)))
+    random.shuffle(indices)
+
+    sz = int(math.ceil(len(indices) * fraction))
+    indices = indices[:sz]
+    split = Subset(dataset, indices)
+
+    data = dro_dataset.DRODataset(
+        split,
+        process_item_fn=None,
+        n_groups=dataset.n_groups,
+        n_classes=dataset.n_classes,
+        group_str_fn=partial(dataset.group_str, use_classifier_groups=use_classifier_groups),
+        use_classifier_groups=use_classifier_groups
+    )
+
+    return data
 
 def main(args):
     if args.wandb:
@@ -29,13 +63,19 @@ def main(args):
         args.adam_epsilon = 1e-8
         args.warmup_steps = 0
 
-    if os.path.exists(args.log_dir) and args.resume:
+    if args.learned_vis or args.emb_to_groups:
+        use_embeddings = True
+        torch.manual_seed(42)
+        mp.set_start_method('spawn')
+    else:
+        use_embeddings = False
+
+    if os.path.exists(args.log_dir) and (args.resume or use_embeddings):
         resume = True
         mode = "a"
     else:
         resume = False
         mode = "w"
-
     ## Initialize logs
     if not os.path.exists(args.log_dir):
         os.makedirs(args.log_dir)
@@ -51,6 +91,7 @@ def main(args):
     test_data = None
     test_loader = None
     if args.shift_type == "confounder":
+        print('PREPARE DATA')
         train_data, val_data, test_data = prepare_data(
             args,
             train=True,
@@ -60,6 +101,10 @@ def main(args):
         raise NotImplementedError
         train_data, val_data = prepare_data(args, train=True)
 
+    if args.shrink: # TODO: Fix this
+        print('SHRINKING')
+        train_data, val_data, test_data = get_subset(train_data, use_classifier_groups=(args.classifier_group_path != '')), get_subset(val_data), get_subset(test_data) # changed so val does not use classifier groups
+
     #########################################################################
     ###################### Prepare data for our method ######################
     #########################################################################
@@ -68,24 +113,33 @@ def main(args):
     assert not args.fold or not args.up_weight
 
     # Fold passed. Use it as train and valid.
-    if args.fold:
+    if args.fold: # NOTE: this should not get used
+        print('ARGS FOLD')
         train_data, val_data = folds.get_fold(
             train_data,
             args.fold,
             cross_validation_ratio=(1 / args.num_folds_per_sweep),
             num_valid_per_point=args.num_sweeps,
             seed=args.seed,
+            use_classifier_groups=(args.classifier_group_path != '')
         )
 
     if args.up_weight != 0:
+        print('UPWEIGHTING SOMETHING')
         assert args.aug_col is not None
         # Get points that should be upsampled
         metadata_df = pd.read_csv(args.metadata_path)
+        
         if args.dataset == "jigsaw":
             train_col = metadata_df[metadata_df["split"] == "train"]
         else:
             train_col = metadata_df[metadata_df["split"] == 0]
-        aug_indices = np.where(train_col[args.aug_col] == 1)[0]
+
+        aug_indices = np.where(train_col[args.aug_col] == 1)[0] # tells us who is misclassified by default
+
+
+        print('train_col', train_col)
+        print('total', len(metadata_df) + len(val_data) + len(test_data))
         print("len", len(train_col), len(aug_indices))
         if args.up_weight == -1:
             up_weight_factor = int(
@@ -94,43 +148,101 @@ def main(args):
             up_weight_factor = args.up_weight
 
         print(f"Up-weight factor: {up_weight_factor}")
-        upsampled_points = Subset(train_data,
-                                  list(aug_indices) * up_weight_factor)
-        # Convert to DRODataset
-        train_data = dro_dataset.DRODataset(
-            ConcatDataset([train_data, upsampled_points]),
-            process_item_fn=None,
-            n_groups=train_data.n_groups,
-            n_classes=train_data.n_classes,
-            group_str_fn=train_data.group_str,
-        )
+        if args.lambda_loss:
+            up_weight_array = [1] * (len(train_col) + len(val_data) + len(test_data))
+            for idx in aug_indices:
+                up_weight_array[idx] = up_weight_factor
+            
+            # print("up_weight_array:", up_weight_array)
+            train_data = dro_dataset.DRODataset(
+                train_data,
+                process_item_fn=None,
+                n_groups=train_data.n_groups,
+                n_classes=train_data.n_classes,
+                group_str_fn=partial(train_data.group_str, use_classifier_groups=(args.classifier_group_path != '')),
+                new_up_weight_array=up_weight_array,
+                use_classifier_groups=(args.classifier_group_path != '')
+            )
+        elif not args.upweight_misclassified:
+            upsampled_points = Subset(train_data,
+                                    list(aug_indices) * up_weight_factor, use_classifier_groups=(args.classifier_group_path != ''))
+            # Convert to DRODataset
+            train_data = dro_dataset.DRODataset(
+                ConcatDataset([train_data, upsampled_points]),
+                process_item_fn=None,
+                n_groups=train_data.n_groups, # TODO: fix this
+                n_classes=train_data.n_classes,
+                group_str_fn=partial(train_data.group_str, use_classifier_groups=(args.classifier_group_path != '')),
+                use_classifier_groups=(args.classifier_group_path != '')
+            )
     elif args.aug_col is not None:
         print("\n"*2 + "WARNING: aug_col is not being used." + "\n"*2)
 
-    #########################################################################
-    #########################################################################
-    #########################################################################
 
+
+    # metadata_df = pd.read_csv(args.metadata_path)
+    # train_col = metadata_df[metadata_df["split"] == 0]
+    # aug_indices = np.where(train_col[args.aug_col] == 1)[0] # tells us who is misclassified by default
+
+    #########################################################################
+    #########################################################################
+    #########################################################################
+    
+    print('GET MODEL')
+    ## Initialize model
+    model = get_model(
+        model=args.model,
+        pretrained=not args.train_from_scratch,
+        resume=resume,
+        n_classes=train_data.n_classes,
+        dataset=args.dataset,
+        log_dir=args.log_dir,
+        resume_path=args.resume_path
+    )
+
+    print('GET LOADERS')
     loader_kwargs = {
         "batch_size": args.batch_size,
         "num_workers": 4,
-        "pin_memory": True,
+        "pin_memory": not use_embeddings,
+        "persistent_workers": True
     }
+
+    if args.emb_to_groups:
+        model.eval()
+        feature_extractor = get_embeddings(loader_kwargs, model, args.emb_layers)
+
+        # train_loader = create_dataloader(feature_extractor, train_data, None, loader_kwargs)
+        # visualize(train_loader, feature_extractor, args.vis_layer)
+        index = args.resume_path.find('_')
+        epoch = int(args.resume_path[:index])
+        __find_groups(args.dataset, epoch, train_data, val_data, test_data, feature_extractor, **loader_kwargs)
+        # find_groups()
+        # george_find_groups()
+        # breakdown()
+        # loss_binning()
+        # neighborhood_exploration()
+        # experiment()
+        return
+
     train_loader = dro_dataset.get_loader(train_data,
-                                          train=True,
-                                          reweight_groups=args.reweight_groups,
-                                          **loader_kwargs)
+                                            train=True,
+                                            reweight_groups=args.reweight_groups,
+                                            upweight_misclassified=aug_indices if args.upweight_misclassified else None,
+                                            **loader_kwargs)
 
     val_loader = dro_dataset.get_loader(val_data,
-                                        train=False,
-                                        reweight_groups=None,
-                                        **loader_kwargs)
+                                            train=False,
+                                            reweight_groups=None,
+                                            upweight_misclassified=None,
+                                            **loader_kwargs)
 
     if test_data is not None:
         test_loader = dro_dataset.get_loader(test_data,
-                                             train=False,
-                                             reweight_groups=None,
-                                             **loader_kwargs)
+                                                train=False,
+                                                reweight_groups=None,
+                                                upweight_misclassified=None,
+                                                **loader_kwargs)
 
     data = {}
     data["train_loader"] = train_loader
@@ -140,19 +252,8 @@ def main(args):
     data["val_data"] = val_data
     data["test_data"] = test_data
 
-    n_classes = train_data.n_classes
+    log_data(data, logger)  
 
-    log_data(data, logger)
-
-    ## Initialize model
-    model = get_model(
-        model=args.model,
-        pretrained=not args.train_from_scratch,
-        resume=resume,
-        n_classes=train_data.n_classes,
-        dataset=args.dataset,
-        log_dir=args.log_dir,
-    )
     if args.wandb:
         wandb.watch(model)
 
@@ -160,7 +261,7 @@ def main(args):
 
     ## Define the objective
     if args.hinge:
-        assert args.dataset in ["CelebA", "CUB"]  # Only supports binary
+        assert args.dataset in ["CelebA", "CUB", "ColoredMNIST", "ColoredMNIST_HARD"]  # Only supports binary
         criterion = hinge_loss
     else:
         criterion = torch.nn.CrossEntropyLoss(reduction="none")
@@ -182,7 +283,10 @@ def main(args):
                                     mode=mode)
     test_csv_logger = CSVBatchLogger(os.path.join(args.log_dir, f"test.csv"),
                                      test_data.n_groups,
-                                     mode=mode)
+                                    mode=mode)
+
+    s = time.time()
+
     train(
         model,
         criterion,
@@ -195,7 +299,10 @@ def main(args):
         epoch_offset=epoch_offset,
         csv_name=args.fold,
         wandb=wandb if args.wandb else None,
+        use_classifier_groups=(args.classifier_group_path != '')
     )
+    e = time.time()
+    print('TOTAL TRAINING TIME', e - s)
 
     train_csv_logger.close()
     val_csv_logger.close()
@@ -230,8 +337,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--target_name")
     parser.add_argument("-c", "--confounder_names", nargs="+")
     parser.add_argument("--up_weight", type=int, default=0)
-    # Resume?
-    parser.add_argument("--resume", default=False, action="store_true")
+
     # Label shifts
     parser.add_argument("--minority_fraction", type=float)
     parser.add_argument("--imbalance_ratio", type=float)
@@ -246,7 +352,7 @@ if __name__ == "__main__":
 
     # Objective
     parser.add_argument("--loss_type", default="erm",
-                        choices=["erm", "group_dro", "joint_dro"])
+                        choices=["erm", "group_dro", "joint_dro", "jtt_fake_dro"])
     parser.add_argument("--alpha", type=float, default=0.2)
     parser.add_argument("--generalization_adjustment", default="0.0")
     parser.add_argument("--automatic_adjustment",
@@ -281,9 +387,9 @@ if __name__ == "__main__":
     parser.add_argument("--show_progress", default=False, action="store_true")
     parser.add_argument("--log_dir", default="./logs")
     parser.add_argument("--log_every", default=50, type=int)
-    parser.add_argument("--save_step", type=int, default=10)
-    parser.add_argument("--save_best", action="store_true", default=False)
-    parser.add_argument("--save_last", action="store_true", default=False)
+    parser.add_argument("--save_step", type=int, default=1)
+    parser.add_argument("--save_best", action="store_true", default=True)
+    parser.add_argument("--save_last", action="store_true", default=True)
     parser.add_argument("--use_bert_params", type=int, default=1)
     parser.add_argument("--num_folds_per_sweep", type=int, default=5)
     parser.add_argument("--num_sweeps", type=int, default=4)
@@ -303,6 +409,22 @@ if __name__ == "__main__":
         help="path to metadata csv",
     )
     parser.add_argument("--aug_col", default=None)
+
+    parser.add_argument("--shrink", action="store_true", default=False)
+    parser.add_argument("--mixed_precision", action="store_true", default=False)
+
+    parser.add_argument("--classifier_group_path", default='')
+
+    parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
+    
+    parser.add_argument("--resume", default=False, action="store_true")
+    parser.add_argument('--resume_path', default='last_model.pth')
+    parser.add_argument('--emb_layers', metavar='N', type=int, nargs='+', help='Layer indices, going backwards from tail (so 0 is last layer)')
+    parser.add_argument("--learned_vis", action="store_true", default=False)
+    parser.add_argument("--vis_layer", type=int, default=0)
+    parser.add_argument('--emb_to_groups', action="store_true", default=False)
+
 
     args = parser.parse_args()
     

@@ -4,6 +4,7 @@ import types
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 
 import numpy as np
 from tqdm import tqdm
@@ -17,11 +18,15 @@ device = torch.device("cuda")
 import pandas as pd
 import os
 
+from sklearn.linear_model import LogisticRegression
+from pca_utils import *
+
 
 def run_epoch(
     epoch,
     model,
     optimizer,
+    scaler,
     loader,
     loss_computer,
     logger,
@@ -34,13 +39,14 @@ def run_epoch(
     csv_name=None,
     wandb_group=None,
     wandb=None,
+    use_classifier_groups=False
 ):
     """
     scheduler is only used inside this function if model is bert.
     """
+    
+    total_loss = 0.0
 
-    
-    
     if is_training:
         model.train()
         if (args.model.startswith("bert") and args.use_bert_params): # or (args.model == "bert"):
@@ -60,8 +66,9 @@ def run_epoch(
             batch = tuple(t.to(device) for t in batch)
             x = batch[0]
             y = batch[1]
-            g = batch[2]
-            data_idx = batch[3]
+            g = batch[-1] if use_classifier_groups else batch[2]
+            up_weight_array = batch[3]
+            data_idx = batch[4]
             
             if args.model.startswith("bert"):
                 input_ids = x[:, :, 0]
@@ -74,9 +81,11 @@ def run_epoch(
                     labels=y,
                 )[1]  # [1] returns logits
             else:
-                # outputs.shape: (batch_size, num_classes)
-                outputs = model(x)
-
+                if scaler:
+                    with autocast():
+                        outputs = model(x)
+                        loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
+                else: outputs = model(x)
                 
             output_df = pd.DataFrame()
 
@@ -87,6 +96,10 @@ def run_epoch(
                 indices = data_idx.cpu().numpy()
                 
                 probs = outputs.detach().cpu().numpy()
+
+
+                all_g = g.cpu().numpy()
+                embeddings = model.embeddings
             else:
                 acc_y_pred = np.concatenate([
                     acc_y_pred,
@@ -95,6 +108,10 @@ def run_epoch(
                 acc_y_true = np.concatenate([acc_y_true, y.cpu().numpy()])
                 indices = np.concatenate([indices, data_idx.cpu().numpy()])
                 probs = np.concatenate([probs, outputs.detach().cpu().numpy()], axis = 0)
+
+
+                all_g = np.concatenate([all_g, g.cpu().numpy()])
+                embeddings = np.concatenate([embeddings, model.embeddings], axis=0)
                 
             assert probs.shape[0] == indices.shape[0]
             # TODO: make this cleaner.
@@ -106,7 +123,9 @@ def run_epoch(
             for class_ind in range(probs.shape[1]):
                 output_df[f"pred_prob_{run_name}_{class_ind}"] = probs[:, class_ind]
 
-            loss_main = loss_computer.loss(outputs, y, g, is_training)
+            if not scaler:
+                loss_main = loss_computer.loss(outputs, y, g, is_training, up_weight_array)
+                total_loss += loss_main
 
             if is_training:
                 if (args.model.startswith("bert") and args.use_bert_params): 
@@ -118,8 +137,13 @@ def run_epoch(
                     model.zero_grad()
                 else:
                     optimizer.zero_grad()
-                    loss_main.backward()
-                    optimizer.step()
+                    if scaler:
+                        scaler.scale(loss_main).backward()
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        loss_main.backward()
+                        optimizer.step()
 
             if is_training and (batch_idx + 1) % log_every == 0:
                 run_stats = loss_computer.get_stats(model, args)
@@ -163,6 +187,52 @@ def run_epoch(
             if is_training:
                 loss_computer.reset_stats()
 
+    '''
+    if is_training:
+        embeddings = scale_G(embeddings)
+        misclassified = acc_y_true != acc_y_pred
+
+        blue1s = embeddings[(all_g == 0) & (misclassified == 1)]
+        red1s = embeddings[(all_g == 1) & (misclassified == 0)]
+        blue0s = embeddings[(all_g == 2) & (misclassified == 0)]
+        red0s = embeddings[(all_g == 3) & (misclassified == 1)]
+
+        N = min(len(blue1s), len(red1s), len(blue0s), len(red0s))
+        print(np.sum(all_g == 0), np.sum(all_g == 1), np.sum(all_g == 2), np.sum(all_g == 3))
+        print(len(blue1s), len(red1s), len(blue0s), len(red0s))
+        X_train = np.concatenate((blue1s[:N], red1s[:N], blue0s[:N], red0s[:N]), axis=0)
+        y_train_color = np.array([1] * N + [0] * N + [1] * N + [0] * N)
+
+        print('Epoch', epoch, 'TOTAL LOSS:', total_loss)
+
+
+        if epoch >= 16:
+            print('Projection on Epoch', epoch)
+            accuracy = 1
+            while accuracy > 0.6:
+                # train LR to separate embeddings by color
+                color_model = LogisticRegression()
+                color_model.fit(X_train, y_train_color)
+                predictions = color_model.predict(X_train)
+                accuracy = np.sum(predictions == y_train_color) / len(y_train_color)
+                color_weights = color_model.coef_.flatten()
+                # project out LR weights from model penultimate layer weights
+                u = color_weights.reshape(-1, 1) / np.linalg.norm(color_weights)
+                P = np.eye(84) - u @ u.T
+                model.fc2.weight.data = torch.tensor((model.fc2.weight.data.detach().cpu().numpy().T @ P).T, dtype=torch.float32).to(device)
+                X_train = X_train @ P
+
+    '''
+
+    '''
+        look at avg loss for epoch
+        if avg loss < T:
+            while LR can still separate last layer by color:
+                train LR to separate last layer by color using last layer embeddings
+                project out LR.weights from model.fc2.weights
+                # project out LR weights from LR training set
+    '''    
+
 
 def train(
     model,
@@ -176,24 +246,31 @@ def train(
     epoch_offset,
     csv_name=None,
     wandb=None,
+    use_classifier_groups=False
 ):
     model = model.to(device)
 
     # process generalization adjustment stuff
     adjustments = [float(c) for c in args.generalization_adjustment.split(",")]
-    assert len(adjustments) in (1, dataset["train_data"].n_groups)
+    # assert len(adjustments) in (1, dataset["train_data"].n_groups)
     if len(adjustments) == 1:
-        adjustments = np.array(adjustments * dataset["train_data"].n_groups)
+        train_adjustments = np.array(adjustments * dataset["train_data"].n_groups)
+        val_adjustments = np.array(adjustments * dataset["val_data"].n_groups)
+        test_adjustments = np.array(adjustments * dataset["test_data"].n_groups)
     else:
-        adjustments = np.array(adjustments)
+        # NOTE: shouldn't apply to us hopefully
+        train_adjustments = np.array(adjustments)
+        val_adjustments = train_adjustments
+        test_adjustments = train_adjustments
 
+    # TODO: fix this to account for classifier groups
     train_loss_computer = LossComputer(
         criterion,
         loss_type=args.loss_type,
         dataset=dataset["train_data"],
         alpha=args.alpha,
         gamma=args.gamma,
-        adj=adjustments,
+        adj=train_adjustments,
         step_size=args.robust_step_size,
         normalize_loss=args.use_normalized_loss,
         btl=args.btl,
@@ -250,6 +327,10 @@ def train(
         else:
             scheduler = None
 
+    if args.mixed_precision:
+        scaler = GradScaler()
+    else: scaler = None
+
     best_val_acc = 0
     for epoch in range(epoch_offset, epoch_offset + args.n_epochs):
         logger.write("\nEpoch [%d]:\n" % epoch)
@@ -258,6 +339,7 @@ def train(
             epoch,
             model,
             optimizer,
+            scaler,
             dataset["train_loader"],
             train_loss_computer,
             logger,
@@ -270,6 +352,7 @@ def train(
             scheduler=scheduler,
             wandb_group="train",
             wandb=wandb,
+            use_classifier_groups=use_classifier_groups
         )
 
         logger.write(f"\nValidation:\n")
@@ -279,7 +362,7 @@ def train(
             dataset=dataset["val_data"],
             alpha=args.alpha,
             gamma=args.gamma,
-            adj=adjustments,
+            adj=val_adjustments,
             step_size=args.robust_step_size,
             normalize_loss=args.use_normalized_loss,
             btl=args.btl,
@@ -290,6 +373,7 @@ def train(
             epoch,
             model,
             optimizer,
+            scaler,
             dataset["val_loader"],
             val_loss_computer,
             logger,
@@ -302,7 +386,7 @@ def train(
         )
 
         # Test set; don't print to avoid peeking
-        if dataset["test_data"] is not None:
+        if dataset["test_data"] is not None: # TODO: make sure this will refer to write groups
             test_loss_computer = LossComputer(
                 criterion,
                 loss_type=args.loss_type,
@@ -310,16 +394,17 @@ def train(
                 step_size=args.robust_step_size,
                 alpha=args.alpha,
                 gamma=args.gamma,
-                adj=adjustments,
+                adj=test_adjustments,
                 normalize_loss=args.use_normalized_loss,
                 btl=args.btl,
                 min_var_weight=args.minimum_variational_weight,
                 joint_dro_alpha=args.joint_dro_alpha,
             )
-            run_epoch(
+            run_epoch( # use the regular groups
                 epoch,
                 model,
                 optimizer,
+                scaler,
                 dataset["test_loader"],
                 test_loss_computer,
                 None,
@@ -371,7 +456,7 @@ def train(
                 train_loss_computer.group_counts)
             train_loss_computer.adj = adjustments
             logger.write("Adjustments updated\n")
-            for group_idx in range(train_loss_computer.n_groups):
+            for group_idx in range(train_loss_computer.n_groups): # TODO: make sure this looks at the right n_groups
                 logger.write(
                     f"  {train_loss_computer.get_group_name(group_idx)}:\t"
                     f"adj = {train_loss_computer.adj[group_idx]:.3f}\n")

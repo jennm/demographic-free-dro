@@ -17,6 +17,11 @@ model_attributes = {
         "target_resolution": (224, 224),
         "flatten": False,
     },
+    "cnn": {
+        "feature_type": "image",
+        "target_resolution": (32, 32),
+        "flatten": False,
+    },
     "resnet34": {
         "feature_type": "image",
         "target_resolution": None,

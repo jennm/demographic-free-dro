@@ -5,6 +5,7 @@ import torchvision.transforms as transforms
 from models import model_attributes
 from data.utils import *
 
+# TODO: BROKEN, doesn't support classifier param
 
 ### CIFAR10 ###
 def load_CIFAR10(args, train):

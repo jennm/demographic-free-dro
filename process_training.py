@@ -24,6 +24,10 @@ def main(args):
         metadata_path = "./cub/data/waterbird_complete95_forest2water2/metadata.csv"
     elif args.dataset == "jigsaw":
         metadata_path = "./jigsaw/data/all_data_with_identities.csv"
+    elif args.dataset == "ColoredMNIST":
+        metadata_path = "./coloredMNIST/data/metadata.csv"
+    elif args.dataset == "ColoredMNIST_HARD":
+        metadata_path = "./coloredMNIST_HARD/data/metadata.csv"
     else: 
         raise NotImplementedError 
     
@@ -36,10 +40,13 @@ def main(args):
     # Merge with original features (could be optional)
     original_df = pd.read_csv(metadata_path)
     original_train_df = original_df[original_df["split"] == 0]
-    if dataset == "CelebA" or dataset == "jigsaw" or dataset == "MultiNLI":
+    if dataset == "jigsaw" or dataset == "MultiNLI":
         original_train_df = original_train_df.drop(['Unnamed: 0'], axis=1)
 
-    merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"))
+    if args.shrink:
+        merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"), how="right")
+    else: merged_csv = original_train_df.join(train_df.set_index(f"indices_None_epoch_{final_epoch}_val"))
+
     if dataset == "CUB":
         merged_csv["spurious"] = merged_csv['y'] != merged_csv["place"]
     elif dataset == "CelebA":
@@ -56,6 +63,9 @@ def main(args):
                 (merged_csv["gold_label"] == 1)
                 & (merged_csv["sentence2_has_negation"] == 1)
             )
+    elif dataset == "ColoredMNIST" or dataset == "ColoredMNIST_HARD":
+        assert 0 == np.sum(merged_csv[merged_csv["split"] == 0]["target"] != merged_csv[merged_csv["split"] == 0][f"y_true_None_epoch_{final_epoch}_val"])
+        merged_csv["spurious"] = (merged_csv["target"] == merged_csv["confounder"])
     else: 
         raise NotImplementedError
     print("Number of spurious", np.sum(merged_csv['spurious']))
@@ -91,13 +101,15 @@ def main(args):
         train_probs_df["probs_1"] = probs[:,1]
         if dataset == 'CelebA':
             train_probs_df["confidence"] = train_probs_df["Blond_Hair"] * train_probs_df["probs_1"] + (1 - train_probs_df["Blond_Hair"]) * train_probs_df["probs_0"]
+        elif dataset == 'ColoredMNIST' or dataset == "ColoredMNIST_HARD":
+            train_probs_df["confidence"] = train_probs_df["target"] * train_probs_df["probs_1"] + (1 - train_probs_df["target"]) * train_probs_df["probs_0"]
         elif dataset == 'CUB':
             train_probs_df["confidence"] = train_probs_df["y"] * train_probs_df["probs_1"] + (1 - train_probs_df["y"]) * train_probs_df["probs_0"]
         elif dataset == 'jigsaw':
             train_probs_df["confidence"] = (train_probs_df["toxicity"] >= 0.5) * train_probs_df["probs_1"] + (train_probs_df["toxicity"] < 0.5)  * train_probs_df["probs_0"]
     
     train_probs_df[f"confidence_thres{args.conf_threshold}"] = (train_probs_df["confidence"] < args.conf_threshold).apply(np.int64)
-    if dataset == 'CelebA':
+    if dataset == 'CelebA' or dataset == 'ColoredMNIST' or dataset == "ColoredMNIST_HARD":
         assert(np.sum(train_probs_df[f"confidence_thres{args.conf_threshold}"] != train_probs_df["wrong_1_times"]) == 0)
     
     # Save csv into new dir for the run, and generate downstream runs
@@ -109,7 +121,14 @@ def main(args):
     root = f"{exp_name}/train_downstream_{folder_name}/final_epoch{final_epoch}"
     
     sbatch_command = (
-            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" + (f" --batch_size {args.batch_size}" if args.batch_size else "")
+            f"python generate_downstream.py --exp_name {root} --lr {args.lr} --weight_decay {args.weight_decay} --method JTT --dataset {args.dataset} --aug_col {args.aug_col}" 
+            + (f" --batch_size {args.batch_size}" if args.batch_size else "") 
+            + (f" --shrink" if args.shrink else "") 
+            + (" --mixed_precision" if args.mixed_precision else "")
+            + (" --downsample" if args.downsample else "") 
+            + (" --lambda_loss" if args.lambda_loss else "")
+            + (" --upweight_misclassified" if args.upweight_misclassified else "")
+            + (" --jtt_fake_dro" if args.jtt_fake_dro else "")
         )
     print(sbatch_command)
     if args.deploy:
@@ -119,7 +138,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset", type=str, default="CelebA", help="CUB, CelebA, or MultiNLI"
+        "--dataset", type=str, default="CelebA", help="CUB, CelebA, MultiNLI, ColoredMNIST, or ColoredMNIST_HARD"
     )
     parser.add_argument(
         "--final_epoch",
@@ -135,6 +154,12 @@ if __name__ == "__main__":
     parser.add_argument("--exp_name", type=str, required=True)
     parser.add_argument("--folder_name", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=None)
+    parser.add_argument("--shrink", action="store_true", default=False)
+    parser.add_argument("--mixed_precision", action="store_true", default=False)
+    parser.add_argument("--downsample", action="store_true", default=False)
+    parser.add_argument("--lambda_loss", action="store_true", default=False)
+    parser.add_argument("--upweight_misclassified", action="store_true", default=False)
+    parser.add_argument("--jtt_fake_dro", action="store_true", default=False)
 
     args = parser.parse_args()
     main(args)

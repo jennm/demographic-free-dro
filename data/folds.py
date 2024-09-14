@@ -9,20 +9,23 @@ import warnings
 from torch._utils import _accumulate
 from torch import randperm, default_generator
 
+from functools import partial
 
-class Subset(torch.utils.data.Dataset):
+
+class Subset(torch.utils.data.Dataset): # Subset goes directly ontop of the underlying dataset (like celebA, mnist, etc)
     """
     Subsets a dataset while preserving original indexing.
 
     NOTE: torch.utils.dataset.Subset loses original indexing.
     """
-    def __init__(self, dataset, indices):
+    def __init__(self, dataset, indices, use_classifier_groups=False):
         self.dataset = dataset
         self.indices = indices
-
-        self.group_array = self.get_group_array(re_evaluate=True)
+        self.group_array = self.get_group_array(re_evaluate=True, use_classifier_groups=use_classifier_groups)
         self.label_array = self.get_label_array(re_evaluate=True)
         
+    def update_up_weight_array(self, new_up_weight_array):
+        self.up_weight_array = self.dataset.update_up_weight_array(new_up_weight_array)
 
     def __getitem__(self, idx):
         return self.dataset[self.indices[idx]]
@@ -30,11 +33,11 @@ class Subset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.indices)
 
-    def get_group_array(self, re_evaluate=True):
+    def get_group_array(self, re_evaluate=True, use_classifier_groups=False): # TODO: make sure looks at right group_array
         """Return an array [g_x1, g_x2, ...]"""
         # setting re_evaluate=False helps us over-write the group array if necessary (2-group DRO)
         if re_evaluate:
-            group_array = self.dataset.get_group_array()[self.indices]        
+            group_array = self.dataset.get_group_array(use_classifier_groups=use_classifier_groups)[self.indices] # if we're using classifier groups, underlying call to get group array will do it's thing
             assert len(group_array) == len(self)
             return group_array
         else:
@@ -48,6 +51,12 @@ class Subset(torch.utils.data.Dataset):
         else:
             return self.label_array
 
+    def update_y(self, idx, new_y):
+        self.dataset.update_y(idx, new_y)
+
+    def get_n_groups(self, use_classifier_groups):
+        return self.dataset.get_n_groups(use_classifier_groups)
+
 
 class ConcatDataset(torch.utils.data.ConcatDataset):
     """
@@ -58,10 +67,14 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
     def __init__(self, datasets):
         super(ConcatDataset, self).__init__(datasets)
 
-    def get_group_array(self):
+    def get_group_array(self, use_classifier_groups): # TODO: Check this
         group_array = []
         for dataset in self.datasets:
-            group_array += list(np.squeeze(dataset.get_group_array()))
+            group = dataset.get_group_array(use_classifier_groups)
+            if type(group) is not torch.tensor:
+                group = torch.tensor(group)
+            group_array.append(group)
+        group_array = torch.concat(group_array)
         return group_array
 
     def get_label_array(self):
@@ -70,7 +83,6 @@ class ConcatDataset(torch.utils.data.ConcatDataset):
             label_array += list(np.squeeze(dataset.get_label_array()))
         return label_array
 
-
 def get_fold(
     dataset,
     fold=None,
@@ -78,6 +90,7 @@ def get_fold(
     num_valid_per_point=4,
     seed=0,
     shuffle=True,
+    use_classifier_groups=False
 ):
     """Returns (train, valid) splits of the dataset.
 
@@ -98,6 +111,7 @@ def get_fold(
           set.  Each inner list is length: num_valid_per_point * 1 /
           cross_validation_ratio.
     """
+
     if fold is not None:
         indices = fold.split("_")[1:]
         sweep_ind = int(indices[0])
@@ -122,11 +136,11 @@ def get_fold(
             train_indices = indices[:i * valid_size] + indices[(i + 1) *
                                                                valid_size:]
             print("len(train_indices)", len(train_indices))
-            train_split = Subset(dataset, train_indices)
+            train_split = Subset(dataset, train_indices, use_classifier_groups) # needs to know what groups to refer to
 
             valid_indices = indices[i * valid_size:(i + 1) * valid_size]
             print("len(valid_indices)", len(valid_indices))
-            valid_split = Subset(dataset, valid_indices)
+            valid_split = Subset(dataset, valid_indices, False) # NOTE: changed to always False
             if sweep_counter == 0 and i == 0:
                 print("train_split", train_split, "valid_split", valid_split)
             folds.append((train_split, valid_split))
@@ -134,22 +148,26 @@ def get_fold(
 
     if fold is not None:
         train_data_subset, val_data_subset = all_folds[sweep_ind][fold_ind]
+        
         # Wrap in DRODataset Objects
-        train_data = dro_dataset.DRODataset(
+        # TODO: Make sure looks at right group array
+        train_data = dro_dataset.DRODataset( 
             train_data_subset,
             process_item_fn=None,
-            n_groups=dataset.n_groups,
+            n_groups=dataset.get_n_groups(use_classifier_groups),
             n_classes=dataset.n_classes,
-            group_str_fn=dataset.group_str,
+            group_str_fn=partial(dataset.group_str, use_classifier_groups=use_classifier_groups),
+            use_classifier_groups=use_classifier_groups
         )
 
         val_data = dro_dataset.DRODataset(
             val_data_subset,
             process_item_fn=None,
-            n_groups=dataset.n_groups,
+            n_groups=dataset.get_n_groups(use_classifier_groups=False),
             n_classes=dataset.n_classes,
-            group_str_fn=dataset.group_str,
-        )
+            group_str_fn=partial(dataset.group_str, use_classifier_groups=False),
+            use_classifier_groups=False
+        ) # NOTE: changed so val does NOT use classifier groups
 
         return train_data, val_data
     else:

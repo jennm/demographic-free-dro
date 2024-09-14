@@ -6,7 +6,7 @@ import numpy as np
 import joint_dro
 
 
-class LossComputer:
+class LossComputer: # separate loss computer for train, val, test
     def __init__(
         self,
         criterion,
@@ -21,7 +21,7 @@ class LossComputer:
         btl=False,
         joint_dro_alpha=None,
     ):
-        assert loss_type in ["group_dro", "erm", "joint_dro"]
+        assert loss_type in ["group_dro", "erm", "joint_dro", "jtt_fake_dro"]
 
         self.criterion = criterion
         self.loss_type = loss_type
@@ -35,8 +35,11 @@ class LossComputer:
         self.n_groups = dataset.n_groups
 
         self.group_counts = dataset.group_counts().cuda()
-        self.group_frac = self.group_counts / self.group_counts.sum()
-        self.group_str = dataset.group_str
+        self.avoid_nans_group_counts = self.group_counts + (self.group_counts == 0).float()
+
+
+        self.group_frac = self.group_counts / self.avoid_nans_group_counts.sum()
+        self.group_str = dataset.group_str # TODO: Check this
 
         if self.loss_type == "joint_dro":
             # Joint DRO reg should be 0.
@@ -53,15 +56,20 @@ class LossComputer:
             assert alpha, "alpha must be specified"
 
         # quantities maintained throughout training
+            # initially uniform distribution over all groups
         self.adv_probs = torch.ones(self.n_groups).cuda() / self.n_groups
+            # zero init exponential avg loss per group
         self.exp_avg_loss = torch.zeros(self.n_groups).cuda()
+            # more efficient rep of zero init exponential avg loss per group
         self.exp_avg_initialized = torch.zeros(self.n_groups).byte().cuda()
 
         self.reset_stats()
 
-    def loss(self, yhat, y, group_idx=None, is_training=False):
+    def loss(self, yhat, y, group_idx=None, is_training=False, lambda_weights=None):        
         # compute per-sample and per-group losses
         per_sample_losses = self.criterion(yhat, y)
+        per_sample_losses *= lambda_weights
+
         group_loss, group_count = self.compute_group_avg(
             per_sample_losses, group_idx)
         group_acc, group_count = self.compute_group_avg(
@@ -81,6 +89,13 @@ class LossComputer:
         elif self.loss_type == "joint_dro":
             actual_loss = self._joint_dro_loss_computer(per_sample_losses)
             weights = None
+        elif self.loss_type == "jtt_fake_dro":
+            jtt_group_idx = (torch.argmax(yhat, 1) != y).float()
+            jtt_group_loss, jtt_group_count = self.compute_group_avg(
+                per_sample_losses, jtt_group_idx)
+            actual_loss, weights = self.compute_robust_loss(
+                    jtt_group_loss, jtt_group_count)
+
         else:
             assert self.loss_type == "erm"
 
@@ -94,21 +109,37 @@ class LossComputer:
         return actual_loss
 
     def compute_robust_loss(self, group_loss, group_count):
+        """computes adjusted loss, gives back weighted sum of group losses
+
+        Args:
+            group_loss (_type_): losses corresponding to different groups
+            group_count (_type_): count of each group
+
+        Returns:
+            _type_: robust loss and scaled adversarial probabilities
+        """
+        # add some adjustment dependent on group size to each group loss
         adjusted_loss = group_loss
         if torch.all(self.adj > 0):
-            adjusted_loss += self.adj / torch.sqrt(self.group_counts)
+            adjusted_loss += self.adj / torch.sqrt(self.avoid_nans_group_counts)
+
+        # normalizes adjusted loss
         if self.normalize_loss:
             adjusted_loss = adjusted_loss / (adjusted_loss.sum())
+        
+        # softmax the adversarial probabilities with the adjusted losses?
         self.adv_probs = self.adv_probs * torch.exp(
-            self.step_size * adjusted_loss.data)
-        self.adv_probs = self.adv_probs / (self.adv_probs.sum())
+            self.step_size * adjusted_loss.data) # spreads out values
+        self.adv_probs = self.adv_probs / (self.adv_probs.sum()) # normalizes values
 
+        # dot product of group loss and adv_probs
+        # yields weighted sum of losses
         robust_loss = group_loss @ self.adv_probs
         return robust_loss, self.adv_probs
 
     def compute_robust_loss_btl(self, group_loss, group_count):
         adjusted_loss = self.exp_avg_loss + self.adj / torch.sqrt(
-            self.group_counts)
+            self.avoid_nans_group_counts)
         return self.compute_robust_loss_greedy(group_loss, adjusted_loss)
 
     def compute_robust_loss_greedy(self, group_loss, ref_loss):
@@ -132,10 +163,15 @@ class LossComputer:
 
     def compute_group_avg(self, losses, group_idx):
         # compute observed counts and mean loss for each group
-        group_map = (group_idx == torch.arange(
-            self.n_groups).unsqueeze(1).long().cuda()).float()
+        if len(group_idx.shape) > 1:
+            group_map = (group_idx.unsqueeze(2) == torch.arange(0, self.n_groups).long().cuda()).any(dim=1).float()
+            group_count = group_map.sum(0)
+            group_map = torch.swapdims(group_map, 0, 1)
+        else:
+            group_map = (group_idx == torch.arange(
+                self.n_groups).unsqueeze(1).long().cuda()).float()
+            group_count = group_map.sum(1)
 
-        group_count = group_map.sum(1)
         group_denom = group_count + (group_count == 0).float()  # avoid nans
         group_loss = (group_map @ losses.view(-1)) / group_denom
         return group_loss, group_count
@@ -245,12 +281,13 @@ class LossComputer:
             f"Average sample loss: {self.avg_actual_loss.item():.3f}  \n")
         logger.write(f"Average acc: {self.avg_acc.item():.3f}  \n")
         for group_idx in range(self.n_groups):
+            root_count = torch.sqrt(self.group_counts)[group_idx]
             logger.write(
                 f"  {self.group_str(group_idx)}  "
                 f"[n = {int(self.processed_data_counts[group_idx])}]:\t"
                 f"loss = {self.avg_group_loss[group_idx]:.3f}  "
                 f"exp loss = {self.exp_avg_loss[group_idx]:.3f}  "
-                f"adjusted loss = {self.exp_avg_loss[group_idx] + self.adj[group_idx]/torch.sqrt(self.group_counts)[group_idx]:.3f}  "
+                f"adjusted loss = {self.exp_avg_loss[group_idx] + (0 if root_count == 0 else self.adj[group_idx]/root_count):.3f}  "
                 f"adv prob = {self.adv_probs[group_idx]:3f}   "
                 f"acc = {self.avg_group_acc[group_idx]:.3f}\n")
         logger.flush()
