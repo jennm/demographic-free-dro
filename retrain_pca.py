@@ -53,6 +53,14 @@ def train(model, num_epochs, trainloader, optimizer, criterion):
 def compute_acc(labels, predictions):
     return torch.sum(predictions == labels).item() / len(labels)
 
+def compute_tpr_fpr_ppv(labels, predictions):
+    # positive is when labels = 1
+    tp = torch.sum((predictions == labels) & (labels == 1))
+    fn = torch.sum((predictions != labels) & (labels == 1))
+    tn = torch.sum((predictions == labels) & (labels != 1))
+    fp = torch.sum((predictions != labels) & (labels != 1))
+    print(f'TPR: {tp/(tp+fn)}, FPR: {fp/(fp+tn)}, PPV: {tp/(tp+fp)}')
+
 class Color:
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
@@ -65,7 +73,7 @@ class Color:
     UNDERLINE = '\033[4m'
     END = '\033[0m'
 
-def evaluate(model, embeddings, labels, subclasses, original_predictions, original_logits):
+def evaluate(model, embeddings, labels, subclasses, original_predictions, original_logits, include_perf_metrics=True):
     model.eval()
     with torch.no_grad():
         outputs = model(embeddings).squeeze()
@@ -77,6 +85,9 @@ def evaluate(model, embeddings, labels, subclasses, original_predictions, origin
     combined_logits = torch.cat((outputs, original_logits), dim=1)
     stolen_predictions = torch.argmax(combined_logits, 1) % 2
     print('Overall Accuracy:', compute_acc(labels, predictions), 'Stolen Accuracy:', compute_acc(labels, stolen_predictions), 'Original Overall Accuracy:', compute_acc(labels, original_predictions))
+    if include_perf_metrics:
+        print('Overall')
+        compute_tpr_fpr_ppv(labels, predictions)
 
     group_acc = []
 
